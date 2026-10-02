@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Spin Line — Table Tennis Match Winner & Total Games
+Spin Line — Table Tennis Match Winner, Total Games & Correct Score
 --------------------------------------------------------------
 Match-level predictor for the bet365 table-tennis cup/league slate --
 Setka Cup, TT Cup, Czech Liga Pro, TT Elite Series -- built on BetsAPI
@@ -350,6 +350,18 @@ def race_to_n_prob(p, n=MATCH_GAMES_TO_WIN):
     return total
 
 
+def race_scoreline_probs(p, n=MATCH_GAMES_TO_WIN):
+    """Every exact scoreline probability for a race-to-n match, given an
+    independent per-game win probability p. Each is just one term of
+    race_to_n_prob()'s own sum -- e.g. for n=3 (CONFIRMED MATCH_GAMES_TO_WIN
+    via event/view's "extra":{"bestofsets":"5"}): {(3,0): p^3,
+    (3,1): 3*p^3*(1-p), (3,2): 6*p^3*(1-p)^2}. This is what Game Handicap
+    is built on below -- the only line that means anything in a race-to-3
+    format is -1.5/+1.5 games, i.e. whether the match ends 2-clear (3-0 or
+    3-1) rather than going the distance (3-2)."""
+    return {(n, k): math.comb(n - 1 + k, k) * (p ** n) * ((1 - p) ** k) for k in range(n)}
+
+
 # --- BetsAPI calls -------------------------------------------------------
 
 def get_upcoming_matches(league_id, target_date):
@@ -618,6 +630,55 @@ def build_legs_and_cards(target_date):
                         "event_id": event_id, "league_name": league["name"],
                         "home_name": home_name, "away_name": away_name, "match_date": match_date,
                     })
+                # --- Game Handicap (-1.5 / +1.5) -----------------------------
+                # The only meaningful line in a race-to-3 format -- does the
+                # match end 2-clear (3-0/3-1) or go the distance (3-2)? Built
+                # directly on the same per-game win rate as Match Winner
+                # (no new API calls, no new cache), so it carries the same
+                # confidence as the suite's best-performing existing market.
+                home_scorelines = race_scoreline_probs(p_home_game)
+                away_scorelines = race_scoreline_probs(p_away_game)
+                p_home_cover = sum(pr for (gf, ga), pr in home_scorelines.items() if gf - ga >= 2)
+                p_away_cover = sum(pr for (gf, ga), pr in away_scorelines.items() if gf - ga >= 2)
+
+                for name, p_cover, opp in (
+                    (home_name, p_home_cover, away_name),
+                    (away_name, p_away_cover, home_name),
+                ):
+                    legs.append({
+                        "match": match_label, "subject": name,
+                        "market": f"{name} -1.5 Games Handicap",
+                        "prob": round(p_cover * 100),
+                        "hit_rate": None,
+                        "category": f"{league['name']} Game Handicap",
+                        "detail": f"needs to win 3-0 or 3-1 vs {opp} (not a 3-2 decider)",
+                        "history": None,
+                        "event_id": event_id, "league_name": league["name"],
+                        "home_name": home_name, "away_name": away_name, "match_date": match_date,
+                    })
+
+                # --- Correct Score -------------------------------------------
+                # The exact scoreline, reusing the same home_scorelines /
+                # away_scorelines dicts already computed above for Game
+                # Handicap -- no new math, no new API calls. Each race-to-3
+                # match can only end 3-0, 3-1 or 3-2 for either player, so
+                # this is 6 legs per match (3 scorelines x 2 possible winners).
+                for name, scorelines, opp in (
+                    (home_name, home_scorelines, away_name),
+                    (away_name, away_scorelines, home_name),
+                ):
+                    for (gf, ga), pr in sorted(scorelines.items(), key=lambda kv: -kv[1]):
+                        legs.append({
+                            "match": match_label, "subject": name,
+                            "market": f"{name} to win {gf}-{ga}",
+                            "prob": round(pr * 100),
+                            "hit_rate": None,
+                            "category": f"{league['name']} Correct Score",
+                            "detail": f"exact scoreline vs {opp}",
+                            "history": None,
+                            "event_id": event_id, "league_name": league["name"],
+                            "home_name": home_name, "away_name": away_name, "match_date": match_date,
+                        })
             else:
                 p_home_game = p_away_game = p_home_match = p_away_match = None
 
@@ -790,7 +851,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="footnote">
     Match Winner uses each player's recency-weighted per-GAME win rate, combined via log5 into
     a per-game probability, then priced as a race-to-{games_to_win} match using the standard
-    combinatorial formula. Total Games blends each player's own recency-weighted total-games-
+    combinatorial formula. Game Handicap (-1.5/+1.5) uses that exact same per-game probability,
+    just asking whether the match ends 2-clear (3-0/3-1) instead of going the distance
+    (3-2) -- the only meaningful handicap line in a race-to-3 format. Correct Score breaks that
+    same race-to-3 math down into each individual exact scoreline (3-0/3-1/3-2 for either
+    player) -- no new computation, just the full breakdown Game Handicap only partially summed.
+    Total Games blends each player's own recency-weighted total-games-
     per-match pace (games won + games lost, not a real shared history) and prices with a
     Poisson distribution, same convention as every other tool in this suite -- re-scoped from
     an originally planned Total Points market after a live sample confirmed BetsAPI has no
