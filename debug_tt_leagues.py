@@ -38,6 +38,7 @@ Usage:
 import os
 import sys
 import json
+import time
 import requests
 
 BASE_V1 = "https://api.b365api.com/v1"
@@ -48,12 +49,27 @@ TOKEN = os.environ.get("BETSAPI_TOKEN")
 TARGET_NAMES = ["setka", "tt cup", "czech liga pro", "tt elite"]
 
 
-def _get(base, path, params=None):
+def _get(base, path, params=None, retries=3, timeout=30):
+    """BetsAPI can be slow to respond from some networks (GitHub Actions'
+    datacenter IP ranges included -- some paid odds providers throttle
+    or deprioritize those over real user traffic). A 15s timeout with no
+    retry was too tight for that; this gives it more room and a couple
+    of extra attempts with backoff before giving up for real."""
     p = dict(params or {})
     p["token"] = TOKEN
-    r = requests.get(f"{base}{path}", params=p, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            r = requests.get(f"{base}{path}", params=p, timeout=timeout)
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.ReadTimeout as e:
+            last_err = e
+            print(f"    [!] timed out (attempt {attempt}/{retries}) on {path} -- "
+                  f"{'retrying...' if attempt < retries else 'giving up.'}")
+            if attempt < retries:
+                time.sleep(3 * attempt)
+    raise last_err
 
 
 def confirm_leagues():
