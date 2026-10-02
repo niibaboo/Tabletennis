@@ -4,19 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'confirm (find real league ids) or dump-sample (dump one real event/history+view response)'
+        description: 'confirm / dump-sample (event/history+view) / dump-finished-sample (finished match event/view, checks timeline for 1st Game Winner feasibility)'
         required: true
         default: 'confirm'
         type: choice
         options:
           - confirm
           - dump-sample
+          - dump-finished-sample
       league_id:
-        description: 'Only for dump-sample: a league_id to fetch today''s fixtures for (e.g. 22307)'
+        description: 'For dump-sample / dump-finished-sample: a league_id (e.g. 22307)'
         required: false
         default: ''
       day:
-        description: 'Only for dump-sample: YYYYMMDD, defaults to today if left blank'
+        description: 'For dump-sample / dump-finished-sample: YYYYMMDD, defaults to today (dump-finished-sample falls back to yesterday automatically if nothing finished yet)'
         required: false
         default: ''
 
@@ -64,10 +65,24 @@ jobs:
           BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
         run: python3 debug_tt_leagues.py --dump-sample "${{ github.event.inputs.league_id }}" ${{ github.event.inputs.day }}
 
+      - name: Dump a finished-match sample (checks timeline for 1st Game Winner feasibility)
+        if: ${{ github.event.inputs.mode == 'dump-finished-sample' }}
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+        run: python3 debug_tt_leagues.py --dump-finished-sample "${{ github.event.inputs.league_id }}" ${{ github.event.inputs.day }}
+
       - name: Upload sample JSON (dump-sample mode only)
         if: ${{ github.event.inputs.mode == 'dump-sample' }}
         uses: actions/upload-artifact@v4
         with:
           name: spin-line-sample
           path: spin_line_sample_*.json
+          if-no-files-found: warn
+
+      - name: Upload finished-sample JSON (dump-finished-sample mode only)
+        if: ${{ github.event.inputs.mode == 'dump-finished-sample' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: spin-line-finished-sample
+          path: spin_line_finished_sample_*.json
           if-no-files-found: warn
