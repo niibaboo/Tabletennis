@@ -106,6 +106,26 @@ def parse_total_games(event):
     return games[0] + games[1]
 
 
+def parse_game1_winner(event):
+    """'home' or 'away' -- who won game 1 of this FINISHED match. Unlike
+    event/history's past-event entries (only the final "ss"), a
+    finished match's own event/view DOES carry a "scores" dict with the
+    final score of each individual game -- CONFIRMED 2026-10-02 via
+    debug_tt_leagues.py --dump-finished-sample (see spin_line.py's
+    module docstring and get_game1_result(), which this mirrors for
+    verification instead of prediction). Returns None if "scores" or
+    game 1 specifically isn't present/parseable."""
+    scores = event.get("scores")
+    if not isinstance(scores, dict) or "1" not in scores:
+        return None
+    g1 = scores.get("1") or {}
+    try:
+        h, a = int(g1.get("home")), int(g1.get("away"))
+    except (TypeError, ValueError):
+        return None
+    return "home" if h > a else "away"
+
+
 def _entry_id(scanner, subject, event_id, market):
     raw = f"{scanner}|{subject}|{event_id}|{market}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -129,11 +149,12 @@ def save_log(entries):
 
 
 def log_todays_signals(legs, log):
-    """Logs Match Winner and Player Game Total legs. Game Total legs are
-    skipped, same convention/reasoning as Euro Ice's tracker: they
-    blend two players' SEPARATE pace histories, not a real shared
-    record, so there's no single real "side" being claimed the way
-    there is for a Match Winner or a specific player's own pace."""
+    """Logs Match Winner, Player Game Total, and 1st Game Winner legs.
+    Game Total legs are skipped, same convention/reasoning as Euro
+    Ice's tracker: they blend two players' SEPARATE pace histories, not
+    a real shared record, so there's no single real "side" being
+    claimed the way there is for a Match Winner, a specific player's
+    own pace, or 1st Game Winner."""
     existing_ids = {e["id"] for e in log}
     added = 0
 
@@ -169,6 +190,10 @@ def log_todays_signals(legs, log):
             except (IndexError, ValueError):
                 continue
             add("player_games", leg["subject"], leg["market"], f"line={line}",
+                leg["league_name"], leg["event_id"], leg["match_date"],
+                leg["home_name"], leg["away_name"])
+        elif cat.endswith("1st Game Winner"):
+            add("game1_winner", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
 
@@ -214,6 +239,18 @@ def _verify_player_games_entry(entry):
     return {"actual": total, "result": "hit" if total > line else "miss"}
 
 
+def _verify_game1_winner_entry(entry):
+    event = _get_finished_event(entry["event_id"])
+    if not event:
+        return None
+    winner_side = parse_game1_winner(event)
+    if winner_side is None:
+        return None
+    subject_is_home = entry["subject"] == entry["home_name"]
+    subject_side = "home" if subject_is_home else "away"
+    return {"actual": winner_side, "result": "hit" if winner_side == subject_side else "miss"}
+
+
 def verify_pending_results(log, max_checks=60):
     today = datetime.now(timezone.utc).date().isoformat()
     checked = 0
@@ -234,6 +271,8 @@ def verify_pending_results(log, max_checks=60):
                 result = _verify_match_winner_entry(entry)
             elif entry["scanner"] == "player_games":
                 result = _verify_player_games_entry(entry)
+            elif entry["scanner"] == "game1_winner":
+                result = _verify_game1_winner_entry(entry)
         except Exception as e:
             print(f"    [!] verification error for entry {entry['id']} ({entry['scanner']}): {e}")
             result = None
@@ -258,7 +297,11 @@ def build_results_dashboard(log):
         d = by_scanner.setdefault(e["scanner"], {"hit": 0, "miss": 0})
         d[e["result"]] += 1
 
-    SCANNER_LABELS = {"match_winner": "Match Winner", "player_games": "Player Games (Total Games)"}
+    SCANNER_LABELS = {
+        "match_winner": "Match Winner",
+        "player_games": "Player Games (Total Games)",
+        "game1_winner": "1st Game Winner",
+    }
 
     total_hit = sum(d["hit"] for d in by_scanner.values())
     total_miss = sum(d["miss"] for d in by_scanner.values())
@@ -313,8 +356,10 @@ def build_results_dashboard(log):
 <div style="font-size:11px;color:var(--sub);text-align:center;margin-top:20px;line-height:1.6">
   Game Total legs aren't tracked here — they blend two players' separate pace histories into
   one number, so there's no single real "side" to check against (same reasoning as Euro Ice's
-  Game Total). Player Games verifies against the real final games-won score ("ss"), confirmed
-  2026-10-02 against a live BetsAPI sample — see spin_line_results_tracker.py's module docstring.
+  Game Total). Player Games verifies against the real final games-won score ("ss"); 1st Game
+  Winner verifies against the finished match's "scores" dict (final score of each individual
+  game) — both confirmed against live BetsAPI samples, see spin_line_results_tracker.py's
+  module docstring.
 </div>
 </body></html>"""
 
