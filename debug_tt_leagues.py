@@ -55,10 +55,19 @@ TOKEN = os.environ.get("BETSAPI_TOKEN")
 TARGET_NAMES = ["setka", "tt cup", "czech liga pro", "tt elite"]
 
 
-def _get(version, path, params=None, cycles=2, timeout=20):
+def _get(version, path, params=None, cycles=4, timeout=20):
     """version is 'v1' or 'v3'. Tries every host in HOSTS before sleeping
     and retrying the whole cycle, so a host-specific block doesn't waste
-    all the retries hammering the one host that's actually the problem."""
+    all the retries hammering the one host that's actually the problem.
+
+    Retries both plain timeouts AND transient 5xx responses (502/503/504
+    -- confirmed from a live run: most pages succeeded fine across both
+    hosts, with a couple of recovered timeouts, but it died outright on
+    an unhandled 502 Bad Gateway partway through pagination. A 502 isn't
+    a real failure the way a 4xx is -- it's the upstream gateway having a
+    bad moment -- so it gets the same retry treatment as a timeout. 4xx
+    responses (bad token, bad params) are NOT retried -- those won't fix
+    themselves by waiting, and raise_for_status() surfaces them immediately."""
     p = dict(params or {})
     p["token"] = TOKEN
     last_err = None
@@ -67,14 +76,18 @@ def _get(version, path, params=None, cycles=2, timeout=20):
             url = f"{host}/{version}{path}"
             try:
                 r = requests.get(url, params=p, timeout=timeout)
-                r.raise_for_status()
+                if r.status_code >= 500:
+                    last_err = requests.exceptions.HTTPError(f"{r.status_code} from {host}")
+                    print(f"    [!] {r.status_code} (transient) on {host} (cycle {cycle}/{cycles})")
+                    continue
+                r.raise_for_status()  # raises immediately on a real 4xx, not retried
                 print(f"    (served by {host})")
                 return r.json()
-            except requests.exceptions.ReadTimeout as e:
+            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
                 last_err = e
-                print(f"    [!] timed out on {host} (cycle {cycle}/{cycles})")
+                print(f"    [!] {type(e).__name__} on {host} (cycle {cycle}/{cycles})")
         if cycle < cycles:
-            time.sleep(3 * cycle)
+            time.sleep(min(5 * cycle, 20))
     raise last_err
 
 
@@ -88,7 +101,17 @@ def confirm_leagues():
         params = {"sport_id": SPORT_ID}
         if max_id:
             params["max_id"] = max_id
-        data = _get("v3", "/league", params)
+        try:
+            data = _get("v3", "/league", params)
+        except Exception as e:
+            # Don't let one unlucky page after retries throw away every
+            # league already found on earlier pages -- print what we
+            # have and let the caller decide whether to re-run for the
+            # rest (this is a debug tool, not the production model).
+            print(f"  [!] page {page} failed after all retries ({e}) -- "
+                  f"stopping here with {len(all_leagues)} leagues collected so far. "
+                  f"Re-run to continue; max_id={max_id} is where it stopped.")
+            break
         results = data.get("results", []) if isinstance(data, dict) else []
         if not results:
             break
