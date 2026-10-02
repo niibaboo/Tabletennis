@@ -132,7 +132,8 @@ import math
 import json
 import time
 import requests
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 # BetsAPI's own docs name a second load-balancer domain specifically
 # "in case you have issues with api.b365api.com" -- and a live debug
@@ -492,9 +493,25 @@ def _current_win_streak(results):
     return streak
 
 
+LOCAL_TZ = ZoneInfo("Europe/London")
+
+
+def format_kickoff(epoch_str):
+    """BetsAPI's "time" field is a unix-epoch string (UTC, per CONFIRMED
+    event/history/view samples). Rendered in Europe/London local time
+    (handles BST/GMT automatically) since that's the only person using
+    this tool -- returns "--:--" on anything unparseable rather than
+    raising, since a bad/missing time shouldn't break the whole slate."""
+    try:
+        dt = datetime.fromtimestamp(int(epoch_str), tz=timezone.utc).astimezone(LOCAL_TZ)
+        return dt.strftime("%H:%M")
+    except (TypeError, ValueError, OSError):
+        return "--:--"
+
+
 def render_match_card(league_name, home_name, away_name, p_home_game, p_away_game,
                        p_home_match, p_away_match, total_lambda, total_line, total_prob,
-                       home_proj, away_proj):
+                       home_proj, away_proj, kickoff="--:--"):
     home_hist = "/".join(home_proj["results"][-5:]) or "-"
     away_hist = "/".join(away_proj["results"][-5:]) or "-"
 
@@ -516,7 +533,7 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
     </div>"""
 
     return f"""<div class="builderPanel">
-      <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.03em">{league_name}</div>
+      <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.03em">{league_name} · {kickoff}</div>
       <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name} — Total {total_lambda:.1f} games</h3>
       <p style="margin:0;color:var(--sub);font-size:13px">Per-game win rate: {away_name} {p_away_game*100:.0f}% · {home_name} {p_home_game*100:.0f}% | O{total_line} games {total_prob*100:.0f}%</p>
       {win_bar}
@@ -528,11 +545,14 @@ def build_legs_and_cards(target_date):
     Bet Builder; cards_html is the per-match card; streak_entries feeds
     the Win Streak panel. Mirrors euro_ice.py's build_legs_and_cards()
     shape so the rest of the suite's conventions (results tracker
-    wiring, HTML template, builder JS) all carry over unchanged."""
-    legs = []
-    cards = ""
-    streak_entries = []
+    wiring, HTML template, builder JS) all carry over unchanged.
 
+    Fixtures are gathered across ALL leagues first, then sorted by
+    kickoff time before any legs/cards are built -- so the output (card
+    order, and each leg's "match" label, which is prefixed with the
+    local kickoff time) reads chronologically across the whole day's
+    slate instead of grouped strictly league-by-league."""
+    all_matches = []
     for league in LEAGUE_TARGETS:
         if league["id"] is None:
             print(f"Skipping {league['name']} -- league id not yet confirmed "
@@ -546,13 +566,28 @@ def build_legs_and_cards(target_date):
             print(f"  [!] couldn't fetch fixtures for {league['name']}: {e}")
             continue
         print(f"  {len(matches)} fixtures found")
-
         for m in matches:
+            all_matches.append((league, m))
+
+    def _epoch(pair):
+        try:
+            return int(pair[1].get("time") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    all_matches.sort(key=_epoch)
+
+    legs = []
+    cards = ""
+    streak_entries = []
+
+    for league, m in all_matches:
             home, away = m.get("home", {}), m.get("away", {})
             home_name, away_name = home.get("name", "Home"), away.get("name", "Away")
             event_id = m.get("id")
-            match_label = f"{away_name} vs {home_name}"
             match_date = m.get("time", "")
+            kickoff = format_kickoff(match_date)
+            match_label = f"{kickoff} {away_name} vs {home_name}"
 
             home_hist, away_hist = get_event_history(event_id)
             home_proj = project_player(home_hist, home.get("id"))
@@ -651,6 +686,7 @@ def build_legs_and_cards(target_date):
                     cards += render_match_card(
                         league["name"], home_name, away_name, p_home_game, p_away_game,
                         p_home_match, p_away_match, total_lambda, line, prob, home_proj, away_proj,
+                        kickoff=kickoff,
                     )
 
             for name, proj, is_home in ((home_name, home_proj, True), (away_name, away_proj, False)):
