@@ -89,6 +89,31 @@ response -- see spin_line_sample_29128_20261002.json):
      that the convention is confirmed elsewhere, but worth a second
      look if the results tracker's own parsing ever looks off.
 
+CONFIRMED (2026-10-02, via debug_tt_leagues.py --dump-finished-sample
+against an already-FINISHED Setka Cup match -- see
+spin_line_finished_sample_22307_20261002.json): a finished match's own
+/v1/event/view DOES carry per-game data after all -- "scores":
+{"1":{"home":"10","away":"12"}, "2":{...}, "3":{...}} (final score of
+each individual game) and a full point-by-point "timeline" (each point
+tagged with game number "gm", scoring side "te" as "0"=home/"1"=away,
+and the running score "ss"). This does NOT contradict the "no points
+data" finding above -- that finding is about event/history's past-event
+entries specifically (confirmed to carry only the final "ss", nothing
+per-game), which is what feeds player projections. event/view's richer
+data only exists per SPECIFIC already-known event_id, one call each --
+there's no bulk/history endpoint that returns it for a whole player's
+past matches. This is what 1st Game Winner is built on: for each event
+in a player's event/history list, get_game1_result() makes one extra
+event/view call (cached locally forever by event_id in
+docs/spin-line/event_view_cache.json, since a finished match's result
+never changes) to learn who won game 1 of that specific past match.
+MAX_NEW_CACHE_FETCHES_PER_RUN caps new lookups per run so the cache
+builds up coverage gradually across many daily runs instead of spiking
+API usage on day one -- early runs will have thin 1st Game Winner
+coverage until the cache matures. User's explicit choice (via
+AskUserQuestion) over skipping the market or fetching uncached/smaller
+history every run.
+
 Usage:
     pip3 install requests --break-system-packages
     export BETSAPI_TOKEN=your_token_here
@@ -136,6 +161,81 @@ DEFAULT_LINE_FACTOR = 0.90  # total games per match is a small, tight range
                              # that keeps it sane for a small integer stat
 MATCH_GAMES_TO_WIN = 3  # race-to-3 (best of 5) -- CONFIRMED via event/view's
                          # "extra":{"bestofsets":"5"} in the live sample
+
+# --- 1st Game Winner event/view cache ------------------------------------
+# A finished match's result never changes, so once we know who won game 1
+# of a specific past event, that's cached forever by event_id -- no TTL,
+# no re-fetching. See module docstring's CONFIRMED block (2026-10-02,
+# --dump-finished-sample) for why this needs its own API call per past
+# event instead of coming for free out of event/history.
+EVENT_VIEW_CACHE_PATH = "docs/spin-line/event_view_cache.json"
+MAX_NEW_CACHE_FETCHES_PER_RUN = 300  # bounds API usage per run -- the cache
+                                      # builds up real coverage gradually
+                                      # across many daily runs rather than
+                                      # trying to backfill everything (and
+                                      # blow the rate limit) in one go
+GAME1_MIN_SAMPLES = 3  # don't post a 1st Game Winner leg off 1-2 cached
+                        # past matches -- too thin to trust
+
+_event_view_cache = {}
+_new_cache_fetches = 0
+
+
+def load_event_view_cache():
+    global _event_view_cache
+    if os.path.exists(EVENT_VIEW_CACHE_PATH):
+        try:
+            with open(EVENT_VIEW_CACHE_PATH) as f:
+                _event_view_cache = json.load(f)
+        except Exception as e:
+            print(f"  [!] couldn't read event_view_cache.json ({e}) -- starting empty")
+            _event_view_cache = {}
+    return _event_view_cache
+
+
+def save_event_view_cache():
+    os.makedirs(os.path.dirname(EVENT_VIEW_CACHE_PATH), exist_ok=True)
+    with open(EVENT_VIEW_CACHE_PATH, "w") as f:
+        json.dump(_event_view_cache, f)
+
+
+def get_game1_result(event_id):
+    """Returns 'home' or 'away' -- who won game 1 of this specific,
+    already-FINISHED past match -- using the local cache first and only
+    calling event/view on a cache miss (and only while under this run's
+    MAX_NEW_CACHE_FETCHES_PER_RUN budget). Returns None if not cached,
+    the budget's used up, the match isn't actually finished yet, or
+    the response can't be parsed -- callers should just skip that
+    historical match rather than guess."""
+    global _new_cache_fetches
+    key = str(event_id)
+    if key in _event_view_cache:
+        return _event_view_cache[key]
+    if _new_cache_fetches >= MAX_NEW_CACHE_FETCHES_PER_RUN:
+        return None
+
+    _new_cache_fetches += 1
+    try:
+        data = _get("v1", "/event/view", {"event_id": event_id})
+    except Exception:
+        return None
+    results = data.get("results", []) if isinstance(data, dict) else []
+    event = results[0] if isinstance(results, list) and results else (results if isinstance(results, dict) else {})
+    if str(event.get("time_status")) != "3":
+        return None  # not actually finished -- don't cache, may resolve later
+
+    scores = event.get("scores")
+    if not isinstance(scores, dict) or "1" not in scores:
+        return None
+    g1 = scores.get("1") or {}
+    try:
+        h, a = int(g1.get("home")), int(g1.get("away"))
+    except (TypeError, ValueError):
+        return None
+
+    winner = "home" if h > a else "away"
+    _event_view_cache[key] = winner  # finished result never changes -- cache forever
+    return winner
 
 
 def _get(version, path, params=None, cycles=4, timeout=20):
@@ -315,6 +415,13 @@ def project_player(history, player_id, weight=RECENT_WEIGHT):
         final games-won score. See module docstring CONFIRMED block.)
       - game_win_rate: recency-weighted fraction of individual
         games/sets won across those same matches.
+      - game1_win_rate: recency-weighted fraction of MATCHES where this
+        player won game 1 specifically -- the 1st Game Winner market's
+        pace indicator. Needs one extra event/view lookup per past
+        match (via get_game1_result(), cached by event_id -- see module
+        docstring's CONFIRMED block on why event/history alone can't
+        tell us this), so coverage is partial until the cache matures;
+        None until at least GAME1_MIN_SAMPLES past matches are cached.
       - results: W/L per match (most recent last), for the Win Streak
         panel and for display.
     player_id is this player's own BetsAPI team id (as returned on the
@@ -327,7 +434,7 @@ def project_player(history, player_id, weight=RECENT_WEIGHT):
     cause of corrupted win rates and implausible streaks seen in a live
     TT Elite Series run (any match where the player was the away side
     got silently flipped). Returns None if there's no usable history."""
-    totals, game_rates, results = [], [], []
+    totals, game_rates, results, game1_results = [], [], [], []
     for ev in history:
         parsed = parse_games_won(ev.get("ss"))
         if parsed is None:
@@ -336,9 +443,9 @@ def project_player(history, player_id, weight=RECENT_WEIGHT):
         home_id = (ev.get("home") or {}).get("id")
         away_id = (ev.get("away") or {}).get("id")
         if str(home_id) == str(player_id):
-            won, lost = home_games, away_games
+            won, lost, player_side = home_games, away_games, "home"
         elif str(away_id) == str(player_id):
-            won, lost = away_games, home_games
+            won, lost, player_side = away_games, home_games, "away"
         else:
             continue  # event doesn't actually list this player on either side
         played = won + lost
@@ -348,6 +455,12 @@ def project_player(history, player_id, weight=RECENT_WEIGHT):
         game_rates.append(won / played)
         results.append("W" if won > lost else "L")
 
+        event_id = ev.get("id")
+        if event_id is not None:
+            g1_winner = get_game1_result(event_id)
+            if g1_winner is not None:
+                game1_results.append(1.0 if g1_winner == player_side else 0.0)
+
     if not totals:
         return None
 
@@ -355,6 +468,8 @@ def project_player(history, player_id, weight=RECENT_WEIGHT):
         "match_games_avg": round(recency_weighted_avg(totals), 2),
         "match_games_history": totals,
         "game_win_rate": round(recency_weighted_avg(game_rates), 3) if game_rates else None,
+        "game1_win_rate": round(recency_weighted_avg(game1_results), 3) if len(game1_results) >= GAME1_MIN_SAMPLES else None,
+        "game1_n": len(game1_results),
         "results": results,  # oldest -> newest
         "n_games": len(totals),
     }
@@ -470,6 +585,32 @@ def build_legs_and_cards(target_date):
                     })
             else:
                 p_home_game = p_away_game = p_home_match = p_away_match = None
+
+            # --- 1st Game Winner ----------------------------------------------
+            # Needs game1_win_rate on both sides (only populated once
+            # GAME1_MIN_SAMPLES past matches have a cached event/view result
+            # -- see project_player() and the module docstring's CONFIRMED
+            # block). Coverage is partial until the cache matures, so this
+            # leg simply won't appear for most matchups early on.
+            if home_proj["game1_win_rate"] is not None and away_proj["game1_win_rate"] is not None:
+                p_home_g1 = log5(home_proj["game1_win_rate"], away_proj["game1_win_rate"])
+                p_away_g1 = 1 - p_home_g1
+
+                for name, p_g1, proj, opp in (
+                    (home_name, p_home_g1, home_proj, away_name),
+                    (away_name, p_away_g1, away_proj, home_name),
+                ):
+                    legs.append({
+                        "match": match_label, "subject": name,
+                        "market": f"{name} to win Game 1",
+                        "prob": round(p_g1 * 100),
+                        "hit_rate": None,
+                        "category": f"{league['name']} 1st Game Winner",
+                        "detail": f"wins game 1 in {proj['game1_win_rate']*100:.0f}% of their last {proj['game1_n']} cached matches (their own matches, not just vs {opp})",
+                        "history": None,
+                        "event_id": event_id, "league_name": league["name"],
+                        "home_name": home_name, "away_name": away_name, "match_date": match_date,
+                    })
 
             # --- Total Games (per-player pace + blended match total) --------
             for name, proj, opp_name in ((home_name, home_proj, away_name), (away_name, away_proj, home_name)):
@@ -617,7 +758,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     per-match pace (games won + games lost, not a real shared history) and prices with a
     Poisson distribution, same convention as every other tool in this suite -- re-scoped from
     an originally planned Total Points market after a live sample confirmed BetsAPI has no
-    per-set points data for these leagues, only the final games-won score. Win Streak is
+    per-set points data for these leagues, only the final games-won score. 1st Game Winner uses
+    each player's own recency-weighted rate of winning game 1 of their matches, combined via
+    log5 — coverage builds up gradually over time via a local cache (one extra lookup per past
+    match, capped per run), so it won't appear for every matchup yet. Win Streak is
     informational only — genuinely consecutive match wins, not blended into any projection.
   </div>
 
@@ -738,7 +882,12 @@ if __name__ == "__main__":
         target = date.today()
 
     print(f"Fetching Spin Line slate for {target.isoformat()}…")
+    load_event_view_cache()
+    print(f"  1st Game Winner cache: {len(_event_view_cache)} finished matches known so far")
     legs, cards, streak_entries = build_legs_and_cards(target)
+    print(f"  1st Game Winner cache: {_new_cache_fetches} new lookup(s) this run, "
+          f"{len(_event_view_cache)} total cached")
+    save_event_view_cache()
 
     if not legs:
         print("No usable legs today -- either no confirmed league ids yet (see "
