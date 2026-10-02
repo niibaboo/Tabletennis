@@ -29,17 +29,22 @@ trusting this file's output -- it dumps real league IDs and one real
 event/history response so the parsing below can be corrected against
 actual field names instead of guesses.
 
-UNVERIFIED ASSUMPTIONS:
-  1. League IDs. Setka Cup=22307 and Czech Liga Pro=22742 were found
-     via betsapi.com's own public page URLs (surfaced by web search),
-     NOT via a live API call -- treat as "probably right" not
-     "confirmed". TT Cup and TT Elite Series have NO id yet at all;
-     their LEAGUE_TARGETS entries below have id=None and are SKIPPED
-     at runtime with a warning until debug_tt_leagues.py --confirm
-     finds them (it paginates every table-tennis league via
-     /v3/league?sport_id=92 and filters by name client-side, since
-     that endpoint has no name-search of its own).
-  2. /v3/events/upcoming response shape. Assumed to follow BetsAPI's
+CONFIRMED (2026-10-02, via debug_tt_leagues.py --confirm against a
+live BETSAPI_TOKEN): all 4 league IDs below are real, from BetsAPI's
+own /v3/league list (sport_id=92) -- Setka Cup=22307, Czech Liga
+Pro=22742 (cc=cz), TT Cup=29097 (cc=cz -- NOT TT Cup Women id=30462 or
+TT Cup Ukraine id=22534, which are separate competitions BetsAPI lists
+under similar names), TT Elite Series=29128. Also confirmed in that
+same run: the dual-host fallback (api.b365api.com / api.betsapi.com)
+and retrying 502/503 as well as plain timeouts are BOTH necessary --
+GitHub Actions' connections to BetsAPI are genuinely flaky (several
+pages of that debug run needed a retry or the other host to get a
+response at all), not a one-off. _get() below carries the same
+retry/fallback logic debug_tt_leagues.py ended up needing.
+
+UNVERIFIED ASSUMPTIONS (still open -- confirming league IDs didn't
+confirm these):
+  1. /v3/events/upcoming response shape. Assumed to follow BetsAPI's
      general events-list convention used across their other sports:
      {"success":1,"results":[{"id":..., "time":..., "time_status":"0",
      "league":{"id":...,"name":...}, "home":{"id":...,"name":...},
@@ -47,7 +52,7 @@ UNVERIFIED ASSUMPTIONS:
      documented BetsAPI-wide convention (applies to every sport they
      cover), so this one is lower-risk than the table-tennis-specific
      fields below.
-  3. /v1/event/history response shape. Docs describe it only in prose
+  2. /v1/event/history response shape. Docs describe it only in prose
      ("History events of Home/Away Team before this event"). Assumed
      shape: {"success":1,"results":[{"home":[...past events...],
      "away":[...past events...]}]}. Each past event assumed to carry
@@ -57,13 +62,13 @@ UNVERIFIED ASSUMPTIONS:
      per-set points -- NOT confirmed against a real response. If
      parse_sets() below comes back empty on real data, this is the
      first place to check.
-  4. Match format. These rapid studio cups are commonly played
+  3. Match format. These rapid studio cups are commonly played
      race-to-3-games (best of 5), each game to 11 -- a well-known
      feature of this niche (Setka Cup/TT Cup/Czech Liga Pro run as
      fast turnaround studio matches), not something inferred from
      BetsAPI's docs. MATCH_GAMES_TO_WIN below is a constant specifically
      so it's one place to fix if a league turns out to run best-of-7.
-  5. /v1/event/view (used by the results tracker to fetch a specific
+  4. /v1/event/view (used by the results tracker to fetch a specific
      past event's final score) is assumed to return the same "ss" /
      "scores" shape as event/history's past-event entries, since both
      are BetsAPI's own representation of a finished match.
@@ -84,23 +89,27 @@ import os
 import sys
 import math
 import json
+import time
 import requests
 from datetime import date, datetime
 
-BASE_V1 = "https://api.b365api.com/v1"
-BASE_V3 = "https://api.b365api.com/v3"
+# BetsAPI's own docs name a second load-balancer domain specifically
+# "in case you have issues with api.b365api.com" -- and a live debug
+# run (2026-10-02) confirmed GitHub Actions genuinely needs it: several
+# requests only succeeded after falling back to the other host, or
+# after a retry past a transient 502. Both hosts are tried every cycle
+# before backing off -- see _get() below.
+HOSTS = ["https://api.b365api.com", "https://api.betsapi.com"]
 SPORT_ID = 92  # confirmed via betsapi.com/docs/GLOSSARY.html
 TOKEN = os.environ.get("BETSAPI_TOKEN")
 
-# See UNVERIFIED ASSUMPTION 1 above. id=None entries are skipped at
-# runtime (with a warning) rather than guessed -- a wrong league id
-# would silently scan the WRONG competition, which is worse than
-# skipping one we haven't confirmed yet.
+# CONFIRMED 2026-10-02 via debug_tt_leagues.py --confirm against a live
+# token (see module docstring) -- all 4 are real /v3/league ids.
 LEAGUE_TARGETS = [
     {"id": 22307, "name": "Setka Cup"},
     {"id": 22742, "name": "Czech Liga Pro"},
-    {"id": None, "name": "TT Cup"},
-    {"id": None, "name": "TT Elite Series"},
+    {"id": 29097, "name": "TT Cup"},
+    {"id": 29128, "name": "TT Elite Series"},
 ]
 
 RECENT_WEIGHT = 0.65
@@ -108,18 +117,34 @@ DEFAULT_LINE_FACTOR = 0.90  # closer to 1.0 than the goals/corners tools --
                              # total points runs 60-90, so the same 0.72
                              # factor used for low-count stats would set an
                              # absurdly low, un-bettable line here
-MATCH_GAMES_TO_WIN = 3  # race-to-3 (best of 5) -- see assumption 4
+MATCH_GAMES_TO_WIN = 3  # race-to-3 (best of 5) -- see assumption 3
 
 
-def _get(base, path, params=None):
+def _get(version, path, params=None, cycles=4, timeout=20):
+    """version is 'v1' or 'v3'. Same dual-host + retry-past-5xx logic
+    debug_tt_leagues.py needed against this same API -- see the module
+    docstring's CONFIRMED note. A real 4xx (bad token, bad params) is
+    NOT retried, since waiting won't fix that."""
     if not TOKEN:
         print("Set the BETSAPI_TOKEN environment variable first.")
         raise SystemExit(1)
     p = dict(params or {})
     p["token"] = TOKEN
-    r = requests.get(f"{base}{path}", params=p, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    last_err = None
+    for cycle in range(1, cycles + 1):
+        for host in HOSTS:
+            try:
+                r = requests.get(f"{host}/{version}{path}", params=p, timeout=timeout)
+                if r.status_code >= 500:
+                    last_err = requests.exceptions.HTTPError(f"{r.status_code} from {host}")
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
+                last_err = e
+        if cycle < cycles:
+            time.sleep(min(5 * cycle, 20))
+    raise last_err
 
 
 def poisson_pmf(k, lam):
@@ -212,7 +237,7 @@ def get_upcoming_matches(league_id, target_date):
     """v3/events/upcoming -- see UNVERIFIED ASSUMPTION 2 for the
     response shape this expects. time_status "0" = not started is
     BetsAPI's general (not table-tennis-specific) convention."""
-    data = _get(BASE_V3, "/events/upcoming", {
+    data = _get("v3", "/events/upcoming", {
         "sport_id": SPORT_ID, "league_id": league_id,
         "day": target_date.strftime("%Y%m%d"),
     })
@@ -225,7 +250,7 @@ def get_event_history(event_id, qty=10):
     (home_history, away_history), each a list of past-event dicts,
     oldest-first (sorted here since arrival order isn't documented)."""
     try:
-        data = _get(BASE_V1, "/event/history", {"event_id": event_id, "qty": qty})
+        data = _get("v1", "/event/history", {"event_id": event_id, "qty": qty})
     except Exception as e:
         print(f"    [!] event/history failed for event {event_id}: {e}")
         return [], []
