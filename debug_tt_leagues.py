@@ -41,34 +41,40 @@ import json
 import time
 import requests
 
-BASE_V1 = "https://api.b365api.com/v1"
-BASE_V3 = "https://api.b365api.com/v3"
+# BetsAPI's own docs (betsapi.com/docs, Introduction page) name a SECOND
+# load-balancer domain specifically "in case you have issues with
+# api.b365api.com" -- which is exactly the symptom hit here (consistent
+# ReadTimeouts from GitHub Actions even with a 30s timeout and 3
+# retries, which looks more like a host/IP-range issue than one slow
+# response). Both hosts are tried every cycle, in order, before this
+# backs off and tries the whole cycle again.
+HOSTS = ["https://api.b365api.com", "https://api.betsapi.com"]
 SPORT_ID = 92
 TOKEN = os.environ.get("BETSAPI_TOKEN")
 
 TARGET_NAMES = ["setka", "tt cup", "czech liga pro", "tt elite"]
 
 
-def _get(base, path, params=None, retries=3, timeout=30):
-    """BetsAPI can be slow to respond from some networks (GitHub Actions'
-    datacenter IP ranges included -- some paid odds providers throttle
-    or deprioritize those over real user traffic). A 15s timeout with no
-    retry was too tight for that; this gives it more room and a couple
-    of extra attempts with backoff before giving up for real."""
+def _get(version, path, params=None, cycles=2, timeout=20):
+    """version is 'v1' or 'v3'. Tries every host in HOSTS before sleeping
+    and retrying the whole cycle, so a host-specific block doesn't waste
+    all the retries hammering the one host that's actually the problem."""
     p = dict(params or {})
     p["token"] = TOKEN
     last_err = None
-    for attempt in range(1, retries + 1):
-        try:
-            r = requests.get(f"{base}{path}", params=p, timeout=timeout)
-            r.raise_for_status()
-            return r.json()
-        except requests.exceptions.ReadTimeout as e:
-            last_err = e
-            print(f"    [!] timed out (attempt {attempt}/{retries}) on {path} -- "
-                  f"{'retrying...' if attempt < retries else 'giving up.'}")
-            if attempt < retries:
-                time.sleep(3 * attempt)
+    for cycle in range(1, cycles + 1):
+        for host in HOSTS:
+            url = f"{host}/{version}{path}"
+            try:
+                r = requests.get(url, params=p, timeout=timeout)
+                r.raise_for_status()
+                print(f"    (served by {host})")
+                return r.json()
+            except requests.exceptions.ReadTimeout as e:
+                last_err = e
+                print(f"    [!] timed out on {host} (cycle {cycle}/{cycles})")
+        if cycle < cycles:
+            time.sleep(3 * cycle)
     raise last_err
 
 
@@ -82,7 +88,7 @@ def confirm_leagues():
         params = {"sport_id": SPORT_ID}
         if max_id:
             params["max_id"] = max_id
-        data = _get(BASE_V3, "/league", params)
+        data = _get("v3", "/league", params)
         results = data.get("results", []) if isinstance(data, dict) else []
         if not results:
             break
@@ -120,7 +126,7 @@ def dump_sample(league_id, day=None):
     day = day or datetime.date.today().strftime("%Y%m%d")
 
     print(f"Fetching upcoming events for league_id={league_id} day={day}...")
-    data = _get(BASE_V3, "/events/upcoming", {"sport_id": SPORT_ID, "league_id": league_id, "day": day})
+    data = _get("v3", "/events/upcoming", {"sport_id": SPORT_ID, "league_id": league_id, "day": day})
     results = data.get("results", []) if isinstance(data, dict) else []
     print(f"  {len(results)} event(s) found")
     if not results:
@@ -131,10 +137,10 @@ def dump_sample(league_id, day=None):
     event_id = results[0].get("id")
     print(f"Using first event_id={event_id} for history + view samples...")
 
-    history = _get(BASE_V1, "/event/history", {"event_id": event_id, "qty": 10})
+    history = _get("v1", "/event/history", {"event_id": event_id, "qty": 10})
     out["event_history_sample"] = history
 
-    view = _get(BASE_V1, "/event/view", {"event_id": event_id})
+    view = _get("v1", "/event/view", {"event_id": event_id})
     out["event_view_sample"] = view
 
     path = f"spin_line_sample_{league_id}_{day}.json"
