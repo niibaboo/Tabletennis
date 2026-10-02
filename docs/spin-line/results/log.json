@@ -3274,9 +3274,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888720+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-0",
+    "verified_at": "2026-10-02T23:57:12.834344+00:00"
   },
   {
     "id": "68671fe85a3db7af",
@@ -3291,9 +3292,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888723+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "0-3",
+    "verified_at": "2026-10-02T23:57:12.901585+00:00"
   },
   {
     "id": "b8448074957a3492",
@@ -3308,9 +3310,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888726+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-0",
+    "verified_at": "2026-10-02T23:57:13.071523+00:00"
   },
   {
     "id": "076fe3a2ae69cd34",
@@ -3325,9 +3328,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888729+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "0-3",
+    "verified_at": "2026-10-02T23:57:13.142087+00:00"
   },
   {
     "id": "9f5e5bff39ece66a",
@@ -3342,9 +3346,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888733+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "0-3",
+    "verified_at": "2026-10-02T23:57:13.439124+00:00"
   },
   {
     "id": "66bb41057ea810c0",
@@ -3359,9 +3364,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888736+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-0",
+    "verified_at": "2026-10-02T23:57:16.128810+00:00"
   },
   {
     "id": "43ff19fa5c8f44f7",
@@ -3376,9 +3382,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888739+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:16.220449+00:00"
   },
   {
     "id": "55ca594b15ae1055",
@@ -3393,9 +3400,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888742+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:16.396171+00:00"
   },
   {
     "id": "d12af8598c913cf6",
@@ -3410,9 +3418,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888746+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-0",
+    "verified_at": "2026-10-02T23:57:16.486040+00:00"
   },
   {
     "id": "0a7c7d47c0574228",
@@ -3427,9 +3436,10 @@
     "match_date": "1790964000",
     "date_key": "1790964000",
     "logged_at": "2026-10-02T11:37:19.888749+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "0-3",
+    "verified_at": "2026-10-02T23:57:16.558534+00:00"
   },
   {
     "id": "57c7455c1a1b14eb",
@@ -3444,9 +3454,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888752+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:18.131840+00:00"
   },
   {
     "id": "cab0cd79113d83c7",
@@ -3461,9 +3472,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888755+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:18.201299+00:00"
   },
   {
     "id": "276518f8eb743ac8",
@@ -3478,9 +3490,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888758+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-2",
+    "verified_at": "2026-10-02T23:57:18.281893+00:00"
   },
   {
     "id": "3f0d21bdff3f238f",
@@ -3495,9 +3508,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888761+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "2-3",
+    "verified_at": "2026-10-02T23:57:18.356833+00:00"
   },
   {
     "id": "8e669e60ddc1114c",
@@ -3512,9 +3526,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888765+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "2-3",
+    "verified_at": "2026-10-02T23:57:18.439474+00:00"
   },
   {
     "id": "2c1a0be70b76de4f",
@@ -3529,9 +3544,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888768+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-2",
+    "verified_at": "2026-10-02T23:57:18.543104+00:00"
   },
   {
     "id": "5cb28732f764a4d3",
@@ -3546,9 +3562,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888771+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:21.214484+00:00"
   },
   {
     "id": "657260f7e064ac18",
@@ -3563,9 +3580,10 @@
     "match_date": "1790965800",
     "date_key": "1790965800",
     "logged_at": "2026-10-02T11:37:19.888775+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:21.305813+00:00"
   },
   {
     "id": "4f955667775e3d87",
@@ -3580,9 +3598,10 @@
     "match_date": "1790940600",
     "date_key": "1790940600",
     "logged_at": "2026-10-02T11:37:19.888778+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:21.408198+00:00"
   },
   {
     "id": "96a3cf55caa80dc9",
@@ -3597,9 +3616,10 @@
     "match_date": "1790940600",
     "date_key": "1790940600",
     "logged_at": "2026-10-02T11:37:19.888781+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:21.483097+00:00"
   },
   {
     "id": "d8ca467ae5483d7c",
@@ -3614,9 +3634,10 @@
     "match_date": "1790940900",
     "date_key": "1790940900",
     "logged_at": "2026-10-02T11:37:19.888785+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "2-3",
+    "verified_at": "2026-10-02T23:57:21.620793+00:00"
   },
   {
     "id": "5255fdce3f9b792b",
@@ -3631,9 +3652,10 @@
     "match_date": "1790940900",
     "date_key": "1790940900",
     "logged_at": "2026-10-02T11:37:19.888788+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-2",
+    "verified_at": "2026-10-02T23:57:21.706616+00:00"
   },
   {
     "id": "839ab58dbcf9c0fa",
@@ -3648,9 +3670,10 @@
     "match_date": "1790941200",
     "date_key": "1790941200",
     "logged_at": "2026-10-02T11:37:19.888791+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "2-3",
+    "verified_at": "2026-10-02T23:57:21.791767+00:00"
   },
   {
     "id": "02d5e6a2d928613b",
@@ -3665,9 +3688,10 @@
     "match_date": "1790941200",
     "date_key": "1790941200",
     "logged_at": "2026-10-02T11:37:19.888794+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-2",
+    "verified_at": "2026-10-02T23:57:21.876320+00:00"
   },
   {
     "id": "21a89f756cd51cb6",
@@ -3682,9 +3706,10 @@
     "match_date": "1790941500",
     "date_key": "1790941500",
     "logged_at": "2026-10-02T11:37:19.888798+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:21.992495+00:00"
   },
   {
     "id": "aac45588278b117f",
@@ -3699,9 +3724,10 @@
     "match_date": "1790941500",
     "date_key": "1790941500",
     "logged_at": "2026-10-02T11:37:19.888801+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:22.068335+00:00"
   },
   {
     "id": "b8c7b418d1e6d3f8",
@@ -3716,9 +3742,10 @@
     "match_date": "1790941800",
     "date_key": "1790941800",
     "logged_at": "2026-10-02T11:37:19.888804+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:22.355258+00:00"
   },
   {
     "id": "973cf0e2283b5e3f",
@@ -3733,9 +3760,10 @@
     "match_date": "1790941800",
     "date_key": "1790941800",
     "logged_at": "2026-10-02T11:37:19.888807+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:22.474492+00:00"
   },
   {
     "id": "740f455aeefbff83",
@@ -3750,9 +3778,10 @@
     "match_date": "1790942100",
     "date_key": "1790942100",
     "logged_at": "2026-10-02T11:37:19.888810+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-2",
+    "verified_at": "2026-10-02T23:57:23.456743+00:00"
   },
   {
     "id": "8856720eebf6c15a",
@@ -3767,9 +3796,10 @@
     "match_date": "1790942100",
     "date_key": "1790942100",
     "logged_at": "2026-10-02T11:37:19.888813+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "2-3",
+    "verified_at": "2026-10-02T23:57:23.531081+00:00"
   },
   {
     "id": "45a114ad9763f2ff",
@@ -3784,9 +3814,10 @@
     "match_date": "1790942700",
     "date_key": "1790942700",
     "logged_at": "2026-10-02T11:37:19.888816+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:23.624740+00:00"
   },
   {
     "id": "508e9dc7d8bff6bb",
@@ -3801,9 +3832,10 @@
     "match_date": "1790942700",
     "date_key": "1790942700",
     "logged_at": "2026-10-02T11:37:19.888820+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:23.696867+00:00"
   },
   {
     "id": "d4ec519f70c89818",
@@ -3818,9 +3850,10 @@
     "match_date": "1790943000",
     "date_key": "1790943000",
     "logged_at": "2026-10-02T11:37:19.888823+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:24.323039+00:00"
   },
   {
     "id": "7e341e97d4df2880",
@@ -3835,9 +3868,10 @@
     "match_date": "1790943000",
     "date_key": "1790943000",
     "logged_at": "2026-10-02T11:37:19.888826+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:24.414908+00:00"
   },
   {
     "id": "46a77410971737c4",
@@ -3852,9 +3886,10 @@
     "match_date": "1790943300",
     "date_key": "1790943300",
     "logged_at": "2026-10-02T11:37:19.888829+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:24.515010+00:00"
   },
   {
     "id": "11d2c0f50af6500b",
@@ -3869,9 +3904,10 @@
     "match_date": "1790943300",
     "date_key": "1790943300",
     "logged_at": "2026-10-02T11:37:19.888833+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:25.302307+00:00"
   },
   {
     "id": "5503ec97f153bb4c",
@@ -3886,9 +3922,10 @@
     "match_date": "1790943600",
     "date_key": "1790943600",
     "logged_at": "2026-10-02T11:37:19.888836+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:31.187636+00:00"
   },
   {
     "id": "580c579b57717b0b",
@@ -3903,9 +3940,10 @@
     "match_date": "1790943600",
     "date_key": "1790943600",
     "logged_at": "2026-10-02T11:37:19.888839+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:31.325047+00:00"
   },
   {
     "id": "5706e3f9d2709cb1",
@@ -3920,9 +3958,10 @@
     "match_date": "1790943900",
     "date_key": "1790943900",
     "logged_at": "2026-10-02T11:37:19.888842+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "2-3",
+    "verified_at": "2026-10-02T23:57:31.558695+00:00"
   },
   {
     "id": "5455485ff321f989",
@@ -3937,9 +3976,10 @@
     "match_date": "1790943900",
     "date_key": "1790943900",
     "logged_at": "2026-10-02T11:37:19.888845+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-2",
+    "verified_at": "2026-10-02T23:57:32.318023+00:00"
   },
   {
     "id": "4c779a0c10e10516",
@@ -3954,9 +3994,10 @@
     "match_date": "1790944500",
     "date_key": "1790944500",
     "logged_at": "2026-10-02T11:37:19.888848+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:33.623038+00:00"
   },
   {
     "id": "4034eff05817f170",
@@ -3971,9 +4012,10 @@
     "match_date": "1790944500",
     "date_key": "1790944500",
     "logged_at": "2026-10-02T11:37:19.888852+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:33.710966+00:00"
   },
   {
     "id": "cadba8a647243b4c",
@@ -3988,9 +4030,10 @@
     "match_date": "1790945400",
     "date_key": "1790945400",
     "logged_at": "2026-10-02T11:37:19.888855+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "0-3",
+    "verified_at": "2026-10-02T23:57:36.343638+00:00"
   },
   {
     "id": "1c59701206d6ffdb",
@@ -4005,9 +4048,10 @@
     "match_date": "1790945400",
     "date_key": "1790945400",
     "logged_at": "2026-10-02T11:37:19.888858+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-0",
+    "verified_at": "2026-10-02T23:57:38.595279+00:00"
   },
   {
     "id": "1d4ac58bba6dae76",
@@ -4022,9 +4066,10 @@
     "match_date": "1790945700",
     "date_key": "1790945700",
     "logged_at": "2026-10-02T11:37:19.888861+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "miss",
+    "actual": "1-3",
+    "verified_at": "2026-10-02T23:57:38.826861+00:00"
   },
   {
     "id": "dd42637829efad1d",
@@ -4039,9 +4084,10 @@
     "match_date": "1790945700",
     "date_key": "1790945700",
     "logged_at": "2026-10-02T11:37:19.888865+00:00",
-    "status": "pending",
-    "result": null,
-    "actual": null
+    "status": "verified",
+    "result": "hit",
+    "actual": "3-1",
+    "verified_at": "2026-10-02T23:57:38.916949+00:00"
   },
   {
     "id": "4bcdc8d2b9cd2d05",
@@ -27652,6 +27698,550 @@
     "match_date": "1790985300",
     "date_key": "1790985300",
     "logged_at": "2026-10-02T23:02:46.864874+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "5bd82351a232b1f8",
+    "scanner": "game_handicap",
+    "subject": "Anton Veliiev",
+    "market": "Anton Veliiev -1.5 Games Handicap",
+    "detail": "needs to win 3-0 or 3-1 vs Damian Bucko (not a 3-2 decider)",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619459+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "1caf8a64d9b7c0bd",
+    "scanner": "game_handicap",
+    "subject": "Damian Bucko",
+    "market": "Damian Bucko -1.5 Games Handicap",
+    "detail": "needs to win 3-0 or 3-1 vs Anton Veliiev (not a 3-2 decider)",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619472+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "865425bedd11268e",
+    "scanner": "correct_score",
+    "subject": "Anton Veliiev",
+    "market": "Anton Veliiev to win 3-1",
+    "detail": "score=3-1",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619484+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "9a7c89c22a282473",
+    "scanner": "correct_score",
+    "subject": "Anton Veliiev",
+    "market": "Anton Veliiev to win 3-2",
+    "detail": "score=3-2",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619490+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "284491a9b4fd2ed9",
+    "scanner": "correct_score",
+    "subject": "Anton Veliiev",
+    "market": "Anton Veliiev to win 3-0",
+    "detail": "score=3-0",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619495+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "2926db1f33f47700",
+    "scanner": "correct_score",
+    "subject": "Damian Bucko",
+    "market": "Damian Bucko to win 3-2",
+    "detail": "score=3-2",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619509+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "e5142602992fd6cc",
+    "scanner": "correct_score",
+    "subject": "Damian Bucko",
+    "market": "Damian Bucko to win 3-1",
+    "detail": "score=3-1",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619516+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "ead80876e597472c",
+    "scanner": "correct_score",
+    "subject": "Damian Bucko",
+    "market": "Damian Bucko to win 3-0",
+    "detail": "score=3-0",
+    "league": "TT Cup",
+    "event_id": "13235382",
+    "home_name": "Anton Veliiev",
+    "away_name": "Damian Bucko",
+    "match_date": "1790979000",
+    "date_key": "1790979000",
+    "logged_at": "2026-10-02T23:56:58.619521+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "08c4bb0b63fdba0d",
+    "scanner": "game_handicap",
+    "subject": "Jakub Glanowski",
+    "market": "Jakub Glanowski -1.5 Games Handicap",
+    "detail": "needs to win 3-0 or 3-1 vs Jakub Lamperski (not a 3-2 decider)",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619542+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "a062ce22291e9be3",
+    "scanner": "game_handicap",
+    "subject": "Jakub Lamperski",
+    "market": "Jakub Lamperski -1.5 Games Handicap",
+    "detail": "needs to win 3-0 or 3-1 vs Jakub Glanowski (not a 3-2 decider)",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619546+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "8d4f214a56f4e05c",
+    "scanner": "correct_score",
+    "subject": "Jakub Glanowski",
+    "market": "Jakub Glanowski to win 3-0",
+    "detail": "score=3-0",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619551+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "191c272ef1ed2d4d",
+    "scanner": "correct_score",
+    "subject": "Jakub Glanowski",
+    "market": "Jakub Glanowski to win 3-1",
+    "detail": "score=3-1",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619556+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "82b9cc7e35e0173e",
+    "scanner": "correct_score",
+    "subject": "Jakub Glanowski",
+    "market": "Jakub Glanowski to win 3-2",
+    "detail": "score=3-2",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619560+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "e4302667a4c1b1f5",
+    "scanner": "correct_score",
+    "subject": "Jakub Lamperski",
+    "market": "Jakub Lamperski to win 3-2",
+    "detail": "score=3-2",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619564+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "03eb5f110d27cd40",
+    "scanner": "correct_score",
+    "subject": "Jakub Lamperski",
+    "market": "Jakub Lamperski to win 3-1",
+    "detail": "score=3-1",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619568+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "b50ed3346fda668e",
+    "scanner": "correct_score",
+    "subject": "Jakub Lamperski",
+    "market": "Jakub Lamperski to win 3-0",
+    "detail": "score=3-0",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619574+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "39779a36bc0c75ed",
+    "scanner": "game1_winner",
+    "subject": "Jakub Glanowski",
+    "market": "Jakub Glanowski to win Game 1",
+    "detail": "wins game 1 in 81% of their last 10 cached matches (their own matches, not just vs Jakub Lamperski)",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619579+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "abb510805a8f8d5d",
+    "scanner": "game1_winner",
+    "subject": "Jakub Lamperski",
+    "market": "Jakub Lamperski to win Game 1",
+    "detail": "wins game 1 in 68% of their last 10 cached matches (their own matches, not just vs Jakub Glanowski)",
+    "league": "TT Elite Series",
+    "event_id": "13228803",
+    "home_name": "Jakub Glanowski",
+    "away_name": "Jakub Lamperski",
+    "match_date": "1790984700",
+    "date_key": "1790984700",
+    "logged_at": "2026-10-02T23:56:58.619583+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "01029f2c30a575b4",
+    "scanner": "match_winner",
+    "subject": "Damian Fira",
+    "market": "Damian Fira to win",
+    "detail": "per-game win rate 71% vs Henryk Tkaczyk",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619592+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "b31c6513b5d38c0a",
+    "scanner": "match_winner",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk to win",
+    "detail": "per-game win rate 70% vs Damian Fira",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619595+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "18500893e52e08cc",
+    "scanner": "game_handicap",
+    "subject": "Damian Fira",
+    "market": "Damian Fira -1.5 Games Handicap",
+    "detail": "needs to win 3-0 or 3-1 vs Henryk Tkaczyk (not a 3-2 decider)",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619599+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "130460abff8254d6",
+    "scanner": "game_handicap",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk -1.5 Games Handicap",
+    "detail": "needs to win 3-0 or 3-1 vs Damian Fira (not a 3-2 decider)",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619603+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "9dfaa6b7ae691f62",
+    "scanner": "correct_score",
+    "subject": "Damian Fira",
+    "market": "Damian Fira to win 3-1",
+    "detail": "score=3-1",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619607+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "a508582205e0e1d3",
+    "scanner": "correct_score",
+    "subject": "Damian Fira",
+    "market": "Damian Fira to win 3-2",
+    "detail": "score=3-2",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619611+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "260af2871e3aac02",
+    "scanner": "correct_score",
+    "subject": "Damian Fira",
+    "market": "Damian Fira to win 3-0",
+    "detail": "score=3-0",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619617+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "797a085611a07444",
+    "scanner": "correct_score",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk to win 3-2",
+    "detail": "score=3-2",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619623+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "2d5c6c8c7b32cb13",
+    "scanner": "correct_score",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk to win 3-1",
+    "detail": "score=3-1",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619627+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "f780b70c6b40e5aa",
+    "scanner": "correct_score",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk to win 3-0",
+    "detail": "score=3-0",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619631+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "9c6e3210fa4a001a",
+    "scanner": "game1_winner",
+    "subject": "Damian Fira",
+    "market": "Damian Fira to win Game 1",
+    "detail": "wins game 1 in 50% of their last 10 cached matches (their own matches, not just vs Henryk Tkaczyk)",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619634+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "8cd2d4ca04bef0c0",
+    "scanner": "game1_winner",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk to win Game 1",
+    "detail": "wins game 1 in 71% of their last 10 cached matches (their own matches, not just vs Damian Fira)",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619637+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "6728dbdfcd7e4c2e",
+    "scanner": "player_games",
+    "subject": "Damian Fira",
+    "market": "Damian Fira's matches Over 3.5 Total Games",
+    "detail": "line=3.5",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619642+00:00",
+    "status": "pending",
+    "result": null,
+    "actual": null
+  },
+  {
+    "id": "212e123e6323df3a",
+    "scanner": "player_games",
+    "subject": "Henryk Tkaczyk",
+    "market": "Henryk Tkaczyk's matches Over 3.0 Total Games",
+    "detail": "line=3.0",
+    "league": "TT Elite Series",
+    "event_id": "13235666",
+    "home_name": "Damian Fira",
+    "away_name": "Henryk Tkaczyk",
+    "match_date": "1790985300",
+    "date_key": "1790985300",
+    "logged_at": "2026-10-02T23:56:58.619646+00:00",
     "status": "pending",
     "result": null,
     "actual": null
