@@ -149,12 +149,11 @@ def save_log(entries):
 
 
 def log_todays_signals(legs, log):
-    """Logs Match Winner, Player Game Total, and 1st Game Winner legs.
-    Game Total legs are skipped, same convention/reasoning as Euro
-    Ice's tracker: they blend two players' SEPARATE pace histories, not
-    a real shared record, so there's no single real "side" being
-    claimed the way there is for a Match Winner, a specific player's
-    own pace, or 1st Game Winner."""
+    """Logs Match Winner, Player Game Total, 1st Game Winner, Game
+    Handicap, and Correct Score legs. Game Total legs are skipped, same
+    convention/reasoning as Euro Ice's tracker: they blend two players'
+    SEPARATE pace histories, not a real shared record, so there's no
+    single real "side" being claimed the way there is for the others."""
     existing_ids = {e["id"] for e in log}
     added = 0
 
@@ -194,6 +193,27 @@ def log_todays_signals(legs, log):
                 leg["home_name"], leg["away_name"])
         elif cat.endswith("1st Game Winner"):
             add("game1_winner", leg["subject"], leg["market"], leg.get("detail"),
+                leg["league_name"], leg["event_id"], leg["match_date"],
+                leg["home_name"], leg["away_name"])
+        elif cat.endswith("Game Handicap"):
+            # -1.5/+1.5 is the only line this market ever uses (see
+            # spin_line.py's module docstring/race_scoreline_probs) --
+            # no line to re-parse out of the market string, unlike
+            # Player Game Total's variable Over/Under line.
+            add("game_handicap", leg["subject"], leg["market"], leg.get("detail"),
+                leg["league_name"], leg["event_id"], leg["match_date"],
+                leg["home_name"], leg["away_name"])
+        elif cat.endswith("Correct Score"):
+            # predicted scoreline is embedded in the market string
+            # ("{name} to win {gf}-{ga}"), from the SUBJECT's own
+            # perspective (gf is always the subject's games) -- pull it
+            # back out the same way Player Game Total does for its line.
+            try:
+                gf, ga = leg["market"].split("to win ")[1].split("-")
+                int(gf), int(ga)
+            except (IndexError, ValueError):
+                continue
+            add("correct_score", leg["subject"], leg["market"], f"score={gf}-{ga}",
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
 
@@ -251,6 +271,45 @@ def _verify_game1_winner_entry(entry):
     return {"actual": winner_side, "result": "hit" if winner_side == subject_side else "miss"}
 
 
+def _verify_game_handicap_entry(entry):
+    """-1.5 games handicap: the subject covers if they win by 2+ games
+    (3-0 or 3-1), regardless of whether they won the match outright --
+    reuses the same "ss" field and home/away logic as Match Winner, no
+    new API call shape to trust."""
+    event = _get_finished_event(entry["event_id"])
+    if not event:
+        return None
+    games = parse_ss_home_away(event.get("ss"))
+    if not games:
+        return None
+    home_games, away_games = games
+    subject_is_home = entry["subject"] == entry["home_name"]
+    subject_games = home_games if subject_is_home else away_games
+    opp_games = away_games if subject_is_home else home_games
+    covered = (subject_games - opp_games) >= 2
+    return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if covered else "miss"}
+
+
+def _verify_correct_score_entry(entry):
+    """Exact scoreline, from the subject's own perspective -- reuses the
+    same "ss" field as Match Winner/Game Handicap, just compared against
+    the predicted (gf, ga) instead of a win/cover threshold."""
+    event = _get_finished_event(entry["event_id"])
+    if not event:
+        return None
+    games = parse_ss_home_away(event.get("ss"))
+    if not games:
+        return None
+    home_games, away_games = games
+    subject_is_home = entry["subject"] == entry["home_name"]
+    subject_games = home_games if subject_is_home else away_games
+    opp_games = away_games if subject_is_home else home_games
+    predicted = entry["detail"].split("=")[1]  # "gf-ga"
+    pred_gf, pred_ga = (int(x) for x in predicted.split("-"))
+    hit = (subject_games == pred_gf) and (opp_games == pred_ga)
+    return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if hit else "miss"}
+
+
 def verify_pending_results(log, max_checks=60):
     today = datetime.now(timezone.utc).date().isoformat()
     checked = 0
@@ -273,6 +332,10 @@ def verify_pending_results(log, max_checks=60):
                 result = _verify_player_games_entry(entry)
             elif entry["scanner"] == "game1_winner":
                 result = _verify_game1_winner_entry(entry)
+            elif entry["scanner"] == "game_handicap":
+                result = _verify_game_handicap_entry(entry)
+            elif entry["scanner"] == "correct_score":
+                result = _verify_correct_score_entry(entry)
         except Exception as e:
             print(f"    [!] verification error for entry {entry['id']} ({entry['scanner']}): {e}")
             result = None
@@ -301,6 +364,8 @@ def build_results_dashboard(log):
         "match_winner": "Match Winner",
         "player_games": "Player Games (Total Games)",
         "game1_winner": "1st Game Winner",
+        "game_handicap": "Game Handicap (-1.5)",
+        "correct_score": "Correct Score",
     }
 
     total_hit = sum(d["hit"] for d in by_scanner.values())
@@ -356,10 +421,10 @@ def build_results_dashboard(log):
 <div style="font-size:11px;color:var(--sub);text-align:center;margin-top:20px;line-height:1.6">
   Game Total legs aren't tracked here — they blend two players' separate pace histories into
   one number, so there's no single real "side" to check against (same reasoning as Euro Ice's
-  Game Total). Player Games verifies against the real final games-won score ("ss"); 1st Game
-  Winner verifies against the finished match's "scores" dict (final score of each individual
-  game) — both confirmed against live BetsAPI samples, see spin_line_results_tracker.py's
-  module docstring.
+  Game Total). Player Games, Game Handicap and Correct Score all verify against the real final
+  games-won score ("ss"); 1st Game Winner verifies against the finished match's "scores" dict
+  (final score of each individual game) — all confirmed against live BetsAPI samples, see
+  spin_line_results_tracker.py's module docstring.
 </div>
 </body></html>"""
 
