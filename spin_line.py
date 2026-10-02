@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-Spin Line — Table Tennis Match Winner & Total Points
+Spin Line — Table Tennis Match Winner & Total Games
 --------------------------------------------------------------
 Match-level predictor for the bet365 table-tennis cup/league slate --
 Setka Cup, TT Cup, Czech Liga Pro, TT Elite Series -- built on BetsAPI
 (https://betsapi.com, docs at https://betsapi.com/docs/). Markets:
 Match Winner (log5 per-game rate -> race-to-N match probability) and
-Total Points (recency-weighted pace, Poisson-priced, same pattern as
-every other tool in this suite).
+Total Games (recency-weighted pace, Poisson-priced, same pattern as
+every other tool in this suite). NOTE: originally scoped as "Total
+Points" per the user's request -- re-scoped to Total Games after a
+live sample confirmed BetsAPI's event/history has no per-set POINTS
+data at all, only the final games-won score. See the CONFIRMED block
+below.
 
 WHY BETSAPI, NOT THESTATSAPI: TheStatsAPI (used by Match IQ / Cards &
 Corners IQ / Player Stat Model) is football-only -- confirmed, not
@@ -42,36 +46,48 @@ pages of that debug run needed a retry or the other host to get a
 response at all), not a one-off. _get() below carries the same
 retry/fallback logic debug_tt_leagues.py ended up needing.
 
-UNVERIFIED ASSUMPTIONS (still open -- confirming league IDs didn't
-confirm these):
-  1. /v3/events/upcoming response shape. Assumed to follow BetsAPI's
-     general events-list convention used across their other sports:
-     {"success":1,"results":[{"id":..., "time":..., "time_status":"0",
-     "league":{"id":...,"name":...}, "home":{"id":...,"name":...},
-     "away":{...}}, ...]}. time_status "0" = not started is a
-     documented BetsAPI-wide convention (applies to every sport they
-     cover), so this one is lower-risk than the table-tennis-specific
-     fields below.
-  2. /v1/event/history response shape. Docs describe it only in prose
-     ("History events of Home/Away Team before this event"). Assumed
-     shape: {"success":1,"results":[{"home":[...past events...],
-     "away":[...past events...]}]}. Each past event assumed to carry
-     "ss" (final score, "games_won_subject-games_won_opponent", the
-     standard set-sport convention) and a "scores" dict keyed by set
-     number ({"1":{"home":"11","away":"7"}, "2":{...}, ...}) for
-     per-set points -- NOT confirmed against a real response. If
-     parse_sets() below comes back empty on real data, this is the
-     first place to check.
-  3. Match format. These rapid studio cups are commonly played
-     race-to-3-games (best of 5), each game to 11 -- a well-known
-     feature of this niche (Setka Cup/TT Cup/Czech Liga Pro run as
-     fast turnaround studio matches), not something inferred from
-     BetsAPI's docs. MATCH_GAMES_TO_WIN below is a constant specifically
-     so it's one place to fix if a league turns out to run best-of-7.
-  4. /v1/event/view (used by the results tracker to fetch a specific
-     past event's final score) is assumed to return the same "ss" /
-     "scores" shape as event/history's past-event entries, since both
-     are BetsAPI's own representation of a finished match.
+CONFIRMED (2026-10-02, via debug_tt_leagues.py --dump-sample against
+league_id=29128, a real "ss"-bearing event/history + event/view
+response -- see spin_line_sample_29128_20261002.json):
+  1. /v3/events/upcoming response shape CONFIRMED correct as originally
+     assumed: {"success":1,"results":[{"id":..., "time":"<unix epoch
+     string>", "time_status":"0", "league":{"id":...,"name":...,"cc":...},
+     "home":{"id":...,"name":...}, "away":{...}, "ss":null}, ...]}.
+  2. /v1/event/history response shape CONFIRMED: {"success":1,
+     "results":{"h2h":[...], "home":[...past events...],
+     "away":[...past events...]}} -- "results" is a DICT at the top
+     level (not a list), already handled correctly below. Each past
+     event carries "ss" -- CONFIRMED to always be formatted
+     "home_team_games-away_team_games" FOR THAT SPECIFIC PAST MATCH,
+     regardless of which player's history array it's returned under
+     (verified by cross-referencing the same past event id appearing
+     identically in both players' "home"/"away" arrays). This means
+     the side a given number belongs to must be worked out per-event
+     by comparing that event's own home/away team id against the
+     player being projected -- NOT by always reading the first number
+     as "this player's games", which was the original (wrong) design
+     and the confirmed cause of implausible win-streak clustering seen
+     in a live TT Elite Series run. project_player() below now does
+     this comparison. CONFIRMED ABSENT: there is no "scores" dict (or
+     any other per-set POINTS field) anywhere in event/history or
+     event/view -- only the final games-won "ss" score exists. The
+     original "Total Points" market can't be built from this API at
+     all; re-scoped to "Total Games" (total games played per match,
+     using the real "ss" data) -- the user's explicit choice when
+     presented with this finding.
+  3. Match format: race-to-3-games (best of 5) CONFIRMED by
+     event/view's "extra":{"bestofsets":"5"} field in the live sample,
+     matching the MATCH_GAMES_TO_WIN=3 assumption already in place.
+  4. /v1/event/view response shape: "results" is a LIST here (unlike
+     event/history's dict) -- {"success":1,"results":[{"id":...,
+     "time":..., "time_status":"0"|"3", "home":{...}, "away":{...},
+     "ss":null|"<score>", "extra":{"bestofsets":"5","stadium_data":{...}},
+     "confirmed_at":...}]}. The live sample event was pre-match
+     (ss=null), so a FINISHED event/view's exact "ss" shape is
+     inferred (not directly sampled) to match event/history's
+     confirmed "home_games-away_games" convention -- lower risk now
+     that the convention is confirmed elsewhere, but worth a second
+     look if the results tracker's own parsing ever looks off.
 
 Usage:
     pip3 install requests --break-system-packages
@@ -113,11 +129,13 @@ LEAGUE_TARGETS = [
 ]
 
 RECENT_WEIGHT = 0.65
-DEFAULT_LINE_FACTOR = 0.90  # closer to 1.0 than the goals/corners tools --
-                             # total points runs 60-90, so the same 0.72
-                             # factor used for low-count stats would set an
-                             # absurdly low, un-bettable line here
-MATCH_GAMES_TO_WIN = 3  # race-to-3 (best of 5) -- see assumption 3
+DEFAULT_LINE_FACTOR = 0.90  # total games per match is a small, tight range
+                             # (3-5, since it's race-to-3-of-5) -- same high
+                             # factor as before works fine here too, it's
+                             # the absolute line (safe_line's round_to=0.5)
+                             # that keeps it sane for a small integer stat
+MATCH_GAMES_TO_WIN = 3  # race-to-3 (best of 5) -- CONFIRMED via event/view's
+                         # "extra":{"bestofsets":"5"} in the live sample
 
 
 def _get(version, path, params=None, cycles=4, timeout=20):
@@ -268,9 +286,14 @@ def get_event_history(event_id, qty=10):
 
 
 def parse_games_won(ss):
-    """'3-1' -> (3, 1), SUBJECT - OPPONENT (the side this history
-    belongs to is always listed first in BetsAPI's "ss" convention for
-    set/game-based sports). Returns None on anything unparseable."""
+    """'3-1' -> (3, 1), HOME - AWAY for that specific match (CONFIRMED
+    2026-10-02 against a real event/history sample -- see module
+    docstring). This is NOT "subject's games first" -- which side is
+    "home" or "away" varies per past event and has nothing to do with
+    which player's history array the event is returned under. Callers
+    must compare the event's own home/away team id against the player
+    being projected to know which number is theirs -- see
+    project_player() below. Returns None on anything unparseable."""
     if not ss:
         return None
     parts = str(ss).replace(" ", "").split("-")
@@ -282,61 +305,58 @@ def parse_games_won(ss):
         return None
 
 
-def parse_total_points(event):
-    """Sum every set's home+away points from the 'scores' dict (see
-    UNVERIFIED ASSUMPTION 3). Returns None if 'scores' is missing or
-    empty -- callers should skip that match rather than guess."""
-    scores = event.get("scores")
-    if not isinstance(scores, dict) or not scores:
-        return None
-    total = 0
-    counted = 0
-    for set_scores in scores.values():
-        if not isinstance(set_scores, dict):
-            continue
-        h, a = set_scores.get("home"), set_scores.get("away")
-        try:
-            total += int(h) + int(a)
-            counted += 1
-        except (TypeError, ValueError):
-            continue
-    return total if counted else None
-
-
-def project_player(history, weight=RECENT_WEIGHT):
+def project_player(history, player_id, weight=RECENT_WEIGHT):
     """From a player's own past-event list (oldest-first), derive:
-      - match_total_avg: recency-weighted avg of TOTAL points in
-        matches they played (a pace indicator -- see module docstring
-        on why this isn't the same thing as "their own points scored").
+      - match_games_avg: recency-weighted avg of TOTAL games played per
+        match (games won + games lost) -- the Total Games market's pace
+        indicator. (Originally scoped as a points-based "Total Points"
+        pace -- re-scoped after a live sample confirmed BetsAPI's
+        event/history has no per-set points data at all, only the
+        final games-won score. See module docstring CONFIRMED block.)
       - game_win_rate: recency-weighted fraction of individual
         games/sets won across those same matches.
       - results: W/L per match (most recent last), for the Win Streak
         panel and for display.
-    Returns None if there's no usable history at all."""
+    player_id is this player's own BetsAPI team id (as returned on the
+    UPCOMING match's home/away block) -- REQUIRED, because "ss" is
+    always "home_games-away_games" for that specific past match, not
+    "this player's games first" (CONFIRMED against a live sample --
+    see module docstring and parse_games_won()). Each event's own
+    home/away ids are compared against player_id to attribute the two
+    numbers correctly; a fixed-position read here was the confirmed
+    cause of corrupted win rates and implausible streaks seen in a live
+    TT Elite Series run (any match where the player was the away side
+    got silently flipped). Returns None if there's no usable history."""
     totals, game_rates, results = [], [], []
     for ev in history:
-        ss = parse_games_won(ev.get("ss"))
-        total_pts = parse_total_points(ev)
-        if ss is None and total_pts is None:
+        parsed = parse_games_won(ev.get("ss"))
+        if parsed is None:
             continue
-        if total_pts is not None:
-            totals.append(total_pts)
-        if ss is not None:
-            won, lost = ss
-            played = won + lost
-            if played:
-                game_rates.append(won / played)
-            results.append("W" if won > lost else "L")
+        home_games, away_games = parsed
+        home_id = (ev.get("home") or {}).get("id")
+        away_id = (ev.get("away") or {}).get("id")
+        if str(home_id) == str(player_id):
+            won, lost = home_games, away_games
+        elif str(away_id) == str(player_id):
+            won, lost = away_games, home_games
+        else:
+            continue  # event doesn't actually list this player on either side
+        played = won + lost
+        if not played:
+            continue
+        totals.append(played)
+        game_rates.append(won / played)
+        results.append("W" if won > lost else "L")
 
-    if not totals and not game_rates:
+    if not totals:
         return None
 
     return {
-        "match_total_avg": round(recency_weighted_avg(totals), 2) if totals else None,
-        "match_total_history": [round(v, 1) for v in totals],
+        "match_games_avg": round(recency_weighted_avg(totals), 2),
+        "match_games_history": totals,
         "game_win_rate": round(recency_weighted_avg(game_rates), 3) if game_rates else None,
         "results": results,  # oldest -> newest
-        "n_games": len(totals) or len(game_rates),
+        "n_games": len(totals),
     }
 
 
@@ -360,8 +380,8 @@ def _current_win_streak(results):
 def render_match_card(league_name, home_name, away_name, p_home_game, p_away_game,
                        p_home_match, p_away_match, total_lambda, total_line, total_prob,
                        home_proj, away_proj):
-    home_hist = "/".join(home_proj["results"][-5:]) or "—"
-    away_hist = "/".join(away_proj["results"][-5:]) or "—"
+    home_hist = "/".join(home_proj["results"][-5:]) or "-"
+    away_hist = "/".join(away_proj["results"][-5:]) or "-"
 
     win_bar = f"""<div style="margin:10px 0 6px 0">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;margin-bottom:4px">
@@ -382,8 +402,8 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
 
     return f"""<div class="builderPanel">
       <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.03em">{league_name}</div>
-      <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name} — Total {total_lambda:.1f} pts</h3>
-      <p style="margin:0;color:var(--sub);font-size:13px">Per-game win rate: {away_name} {p_away_game*100:.0f}% · {home_name} {p_home_game*100:.0f}% | O{total_line} pts {total_prob*100:.0f}%</p>
+      <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name} — Total {total_lambda:.1f} games</h3>
+      <p style="margin:0;color:var(--sub);font-size:13px">Per-game win rate: {away_name} {p_away_game*100:.0f}% · {home_name} {p_home_game*100:.0f}% | O{total_line} games {total_prob*100:.0f}%</p>
       {win_bar}
     </div>"""
 
@@ -420,8 +440,8 @@ def build_legs_and_cards(target_date):
             match_date = m.get("time", "")
 
             home_hist, away_hist = get_event_history(event_id)
-            home_proj = project_player(home_hist)
-            away_proj = project_player(away_hist)
+            home_proj = project_player(home_hist, home.get("id"))
+            away_proj = project_player(away_hist, away.get("id"))
 
             if not home_proj or not away_proj:
                 continue
@@ -451,49 +471,46 @@ def build_legs_and_cards(target_date):
             else:
                 p_home_game = p_away_game = p_home_match = p_away_match = None
 
-            # --- Total Points (per-player pace + blended match total) --------
+            # --- Total Games (per-player pace + blended match total) --------
             for name, proj, opp_name in ((home_name, home_proj, away_name), (away_name, away_proj, home_name)):
-                if proj["match_total_avg"] is None:
-                    continue
-                line = safe_line(proj["match_total_avg"])
+                line = safe_line(proj["match_games_avg"])
                 if not line:
                     continue
-                prob = prob_over(proj["match_total_avg"], line)
+                prob = prob_over(proj["match_games_avg"], line)
                 legs.append({
                     "match": match_label, "subject": name,
-                    "market": f"{name}'s matches Over {line} Total Points",
+                    "market": f"{name}'s matches Over {line} Total Games",
                     "prob": round(prob * 100),
-                    "hit_rate": hit_rate(proj["match_total_history"], line),
-                    "category": f"{league['name']} Player Pace",
-                    "detail": f"avg {proj['match_total_avg']} pts/match (their own matches, not just vs {opp_name})",
-                    "history": "/".join(str(v) for v in proj["match_total_history"]) or None,
+                    "hit_rate": hit_rate(proj["match_games_history"], line),
+                    "category": f"{league['name']} Player Game Total",
+                    "detail": f"avg {proj['match_games_avg']} games/match (their own matches, not just vs {opp_name})",
+                    "history": "/".join(str(v) for v in proj["match_games_history"]) or None,
                     "event_id": event_id, "league_name": league["name"],
                     "home_name": home_name, "away_name": away_name, "match_date": match_date,
                 })
 
-            if home_proj["match_total_avg"] is not None and away_proj["match_total_avg"] is not None:
-                total_lambda = (home_proj["match_total_avg"] + away_proj["match_total_avg"]) / 2
-                line = safe_line(total_lambda)
-                if line:
-                    prob = prob_over(total_lambda, line)
-                    legs.append({
-                        "match": match_label, "subject": match_label,
-                        "market": f"Match Over {line} Total Points",
-                        "prob": round(prob * 100),
-                        "hit_rate": None,  # blended pace, not a real shared history -- same
-                                           # reasoning as Euro Ice's Game Total leg
-                        "category": f"{league['name']} Game Total",
-                        "detail": f"blended pace {round(total_lambda, 1)} pts",
-                        "history": None,
-                        "event_id": event_id, "league_name": league["name"],
-                        "home_name": home_name, "away_name": away_name, "match_date": match_date,
-                    })
+            total_lambda = (home_proj["match_games_avg"] + away_proj["match_games_avg"]) / 2
+            line = safe_line(total_lambda)
+            if line:
+                prob = prob_over(total_lambda, line)
+                legs.append({
+                    "match": match_label, "subject": match_label,
+                    "market": f"Match Over {line} Total Games",
+                    "prob": round(prob * 100),
+                    "hit_rate": None,  # blended pace, not a real shared history -- same
+                                       # reasoning as Euro Ice's Game Total leg
+                    "category": f"{league['name']} Game Total",
+                    "detail": f"blended pace {round(total_lambda, 1)} games",
+                    "history": None,
+                    "event_id": event_id, "league_name": league["name"],
+                    "home_name": home_name, "away_name": away_name, "match_date": match_date,
+                })
 
-                    if p_home_match is not None:
-                        cards += render_match_card(
-                            league["name"], home_name, away_name, p_home_game, p_away_game,
-                            p_home_match, p_away_match, total_lambda, line, prob, home_proj, away_proj,
-                        )
+                if p_home_match is not None:
+                    cards += render_match_card(
+                        league["name"], home_name, away_name, p_home_game, p_away_game,
+                        p_home_match, p_away_match, total_lambda, line, prob, home_proj, away_proj,
+                    )
 
             for name, proj, is_home in ((home_name, home_proj, True), (away_name, away_proj, False)):
                 streak_len = _current_win_streak(proj["results"])
@@ -525,7 +542,7 @@ STREAK_PANEL_TEMPLATE = """<div class="builderPanel">
   <div class="builderTitle">🔥 Win Streak</div>
   <div style="font-size:11px;color:var(--sub);margin-bottom:10px">
     Genuinely CONSECUTIVE match wins (no break), reconstructed from recent finished matches --
-    informational, not blended into the Match Winner or Total Points projections above.
+    informational, not blended into the Match Winner or Total Games projections above.
   </div>
   {entries}
 </div>"""
@@ -567,7 +584,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .footnote{{font-size:11px; color:var(--sub); text-align:center; margin-top:20px; line-height:1.6;}}
 </style></head>
 <body>
-  <h1>🏓 Spin Line — Match Winner &amp; Total Points</h1>
+  <h1>🏓 Spin Line — Match Winner &amp; Total Games</h1>
   <div class="sub">Setka Cup · TT Cup · Czech Liga Pro · TT Elite Series — {date} · generated {generated}</div>
   <p style="text-align:center;margin:4px 0 0;font-size:12px"><a href="results/index.html" style="color:#f59e0b;text-decoration:none">📊 Results Tracker</a></p>
 
@@ -594,13 +611,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   {cards}
 
   <div class="footnote">
-    FIRST DRAFT — built against BetsAPI's documentation, not a live key (see this file's module
-    docstring for every flagged assumption). Match Winner uses each player's recency-weighted
-    per-GAME win rate, combined via log5 into a per-game probability, then priced as a
-    race-to-{games_to_win} match using the standard combinatorial formula. Total Points blends
-    each player's own recency-weighted match-total pace (not a real shared history) and prices
-    with a Poisson distribution, same convention as every other tool in this suite. Win Streak
-    is informational only — genuinely consecutive match wins, not blended into any projection.
+    Match Winner uses each player's recency-weighted per-GAME win rate, combined via log5 into
+    a per-game probability, then priced as a race-to-{games_to_win} match using the standard
+    combinatorial formula. Total Games blends each player's own recency-weighted total-games-
+    per-match pace (games won + games lost, not a real shared history) and prices with a
+    Poisson distribution, same convention as every other tool in this suite -- re-scoped from
+    an originally planned Total Points market after a live sample confirmed BetsAPI has no
+    per-set points data for these leagues, only the final games-won score. Win Streak is
+    informational only — genuinely consecutive match wins, not blended into any projection.
   </div>
 
 <script>
