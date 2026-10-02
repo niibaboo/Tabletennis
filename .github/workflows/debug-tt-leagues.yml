@@ -1,0 +1,56 @@
+name: Debug TT Leagues
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'confirm (find real league ids) or dump-sample (dump one real event/history+view response)'
+        required: true
+        default: 'confirm'
+        type: choice
+        options:
+          - confirm
+          - dump-sample
+      league_id:
+        description: 'Only for dump-sample: a league_id to fetch today''s fixtures for (e.g. 22307)'
+        required: false
+        default: ''
+      day:
+        description: 'Only for dump-sample: YYYYMMDD, defaults to today if left blank'
+        required: false
+        default: ''
+
+jobs:
+  confirm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Confirm table-tennis league ids
+        if: ${{ github.event.inputs.mode == 'confirm' }}
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+        run: python3 debug_tt_leagues.py --confirm
+
+      - name: Dump a sample response
+        if: ${{ github.event.inputs.mode == 'dump-sample' }}
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+        run: python3 debug_tt_leagues.py --dump-sample "${{ github.event.inputs.league_id }}" ${{ github.event.inputs.day }}
+
+      - name: Upload sample JSON (dump-sample mode only)
+        if: ${{ github.event.inputs.mode == 'dump-sample' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: spin-line-sample
+          path: spin_line_sample_*.json
+          if-no-files-found: warn
