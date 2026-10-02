@@ -35,6 +35,23 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Raw connectivity check (curl, bypasses Python/requests entirely)
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+        # Confirmed working from a phone/home network with this same token,
+        # but Python's requests library times out on every attempt from
+        # GitHub Actions. This isolates WHERE the problem actually is:
+        # if curl also hangs here, it's GitHub Actions' network/IP being
+        # blocked by BetsAPI; if curl succeeds, the problem is specific to
+        # requests' TLS/connection handling in this environment instead.
+        run: |
+          echo "--- api.b365api.com ---"
+          curl -sS -m 20 -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            "https://api.b365api.com/v3/league?token=${BETSAPI_TOKEN}&sport_id=92" || echo "curl failed/timed out"
+          echo "--- api.betsapi.com ---"
+          curl -sS -m 20 -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            "https://api.betsapi.com/v3/league?token=${BETSAPI_TOKEN}&sport_id=92" || echo "curl failed/timed out"
+
       - name: Confirm table-tennis league ids
         if: ${{ github.event.inputs.mode == 'confirm' }}
         env:
