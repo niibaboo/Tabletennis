@@ -11,14 +11,17 @@ namespace -- see spin_line.py's module docstring), so a pending pick
 is verified with a single direct /v1/event/view?event_id=... call
 instead of a date+league+name search.
 
-UNVERIFIED ASSUMPTION (separate from, and in addition to, the ones in
-spin_line.py): event/view's "ss" field is assumed to be in HOME-AWAY
-order (the general BetsAPI convention for a finished event viewed on
-its own), which is NOT the same order as event/history's past-event
-entries (those are from a specific player's own perspective -- see
-parse_games_won() in spin_line.py). If verified results come out
-looking backwards (a player who clearly lost shows as "hit" on a
-"to win" leg), this is the first place to check.
+CONFIRMED (2026-10-02, via a live event/history + event/view sample --
+see spin_line.py's module docstring): "ss" is always HOME-AWAY games
+won for that specific match, in BOTH event/history and event/view --
+the assumption this file made for event/view's own "ss" field was
+right, and it's also the convention spin_line.py's project_player()
+now uses for event/history's past-event entries (an earlier version of
+that function assumed "ss" was subject-first, which was wrong and is
+now fixed). CONFIRMED ABSENT: there's no per-set "scores" field
+anywhere in this API's table-tennis responses, so the "Player Pace
+(Total Points)" scanner below is re-scoped to "Player Games (Total
+Games)", using the real games-won data from "ss" instead.
 
 Designed to be imported and called from spin_line.py's main() --
 save this file as spin_line_results_tracker.py in the same folder.
@@ -76,9 +79,11 @@ def _get(path, params=None, cycles=3, timeout=20):
 
 
 def parse_ss_home_away(ss):
-    """'3-1' -> (3, 1) as (HOME, AWAY) games won. See module docstring --
-    this order assumption is DIFFERENT from spin_line.py's
-    parse_games_won(), which is subject-perspective, not home/away."""
+    """'3-1' -> (3, 1) as (HOME, AWAY) games won. CONFIRMED 2026-10-02
+    against a live sample -- "ss" is always home-away for that specific
+    match, in both event/history and event/view (see module docstring
+    and spin_line.py's parse_games_won(), which now uses this same
+    convention)."""
     if not ss:
         return None
     parts = str(ss).replace(" ", "").split("-")
@@ -90,22 +95,15 @@ def parse_ss_home_away(ss):
         return None
 
 
-def parse_total_points(event):
-    scores = event.get("scores")
-    if not isinstance(scores, dict) or not scores:
+def parse_total_games(event):
+    """Total games played in a finished match (home games + away games),
+    straight from "ss" -- replaces the original points-based
+    parse_total_points(), which read a "scores" field CONFIRMED absent
+    from this API (see module docstring)."""
+    games = parse_ss_home_away(event.get("ss"))
+    if games is None:
         return None
-    total = 0
-    counted = 0
-    for set_scores in scores.values():
-        if not isinstance(set_scores, dict):
-            continue
-        h, a = set_scores.get("home"), set_scores.get("away")
-        try:
-            total += int(h) + int(a)
-            counted += 1
-        except (TypeError, ValueError):
-            continue
-    return total if counted else None
+    return games[0] + games[1]
 
 
 def _entry_id(scanner, subject, event_id, market):
@@ -131,7 +129,7 @@ def save_log(entries):
 
 
 def log_todays_signals(legs, log):
-    """Logs Match Winner and Player Pace legs. Game Total legs are
+    """Logs Match Winner and Player Game Total legs. Game Total legs are
     skipped, same convention/reasoning as Euro Ice's tracker: they
     blend two players' SEPARATE pace histories, not a real shared
     record, so there's no single real "side" being claimed the way
@@ -162,7 +160,7 @@ def log_todays_signals(legs, log):
             add("match_winner", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
-        elif cat.endswith("Player Pace"):
+        elif cat.endswith("Player Game Total"):
             # line is embedded in the market string ("... Over {line} ...");
             # pull it back out rather than threading a separate field through
             # just for this.
@@ -170,7 +168,7 @@ def log_todays_signals(legs, log):
                 line = float(leg["market"].split("Over ")[1].split(" ")[0])
             except (IndexError, ValueError):
                 continue
-            add("player_pace", leg["subject"], leg["market"], f"line={line}",
+            add("player_games", leg["subject"], leg["market"], f"line={line}",
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
 
@@ -205,11 +203,11 @@ def _verify_match_winner_entry(entry):
     return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if subject_games > opp_games else "miss"}
 
 
-def _verify_player_pace_entry(entry):
+def _verify_player_games_entry(entry):
     event = _get_finished_event(entry["event_id"])
     if not event:
         return None
-    total = parse_total_points(event)
+    total = parse_total_games(event)
     if total is None:
         return None
     line = float(entry["detail"].split("=")[1])
@@ -234,8 +232,8 @@ def verify_pending_results(log, max_checks=60):
         try:
             if entry["scanner"] == "match_winner":
                 result = _verify_match_winner_entry(entry)
-            elif entry["scanner"] == "player_pace":
-                result = _verify_player_pace_entry(entry)
+            elif entry["scanner"] == "player_games":
+                result = _verify_player_games_entry(entry)
         except Exception as e:
             print(f"    [!] verification error for entry {entry['id']} ({entry['scanner']}): {e}")
             result = None
@@ -260,7 +258,7 @@ def build_results_dashboard(log):
         d = by_scanner.setdefault(e["scanner"], {"hit": 0, "miss": 0})
         d[e["result"]] += 1
 
-    SCANNER_LABELS = {"match_winner": "Match Winner", "player_pace": "Player Pace (Total Points)"}
+    SCANNER_LABELS = {"match_winner": "Match Winner", "player_games": "Player Games (Total Games)"}
 
     total_hit = sum(d["hit"] for d in by_scanner.values())
     total_miss = sum(d["miss"] for d in by_scanner.values())
@@ -315,9 +313,8 @@ def build_results_dashboard(log):
 <div style="font-size:11px;color:var(--sub);text-align:center;margin-top:20px;line-height:1.6">
   Game Total legs aren't tracked here — they blend two players' separate pace histories into
   one number, so there's no single real "side" to check against (same reasoning as Euro Ice's
-  Game Total). FIRST DRAFT: this tracker's "ss"/"scores" parsing is unverified against a real
-  BetsAPI response (see spin_line_results_tracker.py's module docstring) — treat early results
-  with real caution until a live run confirms the field shapes are right.
+  Game Total). Player Games verifies against the real final games-won score ("ss"), confirmed
+  2026-10-02 against a live BetsAPI sample — see spin_line_results_tracker.py's module docstring.
 </div>
 </body></html>"""
 
