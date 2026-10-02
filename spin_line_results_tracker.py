@@ -29,31 +29,50 @@ Output:
 """
 
 import os
+import time
 import json
 import hashlib
 import requests
 from datetime import datetime, timezone
 
-BASE_V1 = "https://api.b365api.com/v1"
+# See spin_line.py's module docstring (CONFIRMED 2026-10-02) -- a live
+# debug run showed GitHub Actions genuinely needs both the fallback
+# host and retries past transient 502s against this API, not just
+# plain timeouts.
+HOSTS = ["https://api.b365api.com", "https://api.betsapi.com"]
 TOKEN = os.environ.get("BETSAPI_TOKEN")
 LOG_PATH = "docs/spin-line/results/log.json"
 DASHBOARD_PATH = "docs/spin-line/results/index.html"
 
 
-def _get(path, params=None):
+def _get(path, params=None, cycles=3, timeout=20):
+    """Results verification failing is non-fatal by design (callers
+    treat None as "try again next run"), so this stays quiet on
+    failure rather than raising -- but still gets a real chance via
+    the same dual-host + 5xx-retry logic spin_line.py uses, instead of
+    giving up after one attempt against one host."""
     if not TOKEN:
         return None
     p = dict(params or {})
     p["token"] = TOKEN
-    try:
-        r = requests.get(f"{BASE_V1}{path}", params=p, timeout=15)
-    except Exception as e:
-        print(f"    [!] verification request failed: {path} ({e})")
-        return None
-    if r.status_code != 200:
-        print(f"    [!] {r.status_code} on {path}: {r.text[:150]}")
-        return None
-    return r.json()
+    for cycle in range(1, cycles + 1):
+        for host in HOSTS:
+            try:
+                r = requests.get(f"{host}/v1{path}", params=p, timeout=timeout)
+            except Exception as e:
+                print(f"    [!] verification request failed on {host}: {path} ({e})")
+                continue
+            if r.status_code >= 500:
+                print(f"    [!] {r.status_code} (transient) on {host}: {path}")
+                continue
+            if r.status_code != 200:
+                print(f"    [!] {r.status_code} on {host}: {path}: {r.text[:150]}")
+                return None  # a real 4xx won't be fixed by retrying
+            return r.json()
+        if cycle < cycles:
+            time.sleep(min(5 * cycle, 20))
+    print(f"    [!] giving up on {path} after {cycles} cycles across both hosts")
+    return None
 
 
 def parse_ss_home_away(ss):
