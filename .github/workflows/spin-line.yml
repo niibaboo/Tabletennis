@@ -1,0 +1,44 @@
+name: Spin Line
+
+on:
+  schedule:
+    # Setka Cup / TT Cup / Czech Liga Pro / TT Elite Series run as rapid
+    # studio matches most of the day, not a fixed evening slot like the
+    # other leagues in this suite. Picked a mid-morning UTC run so the
+    # day's slate is ready well ahead of the bulk of the day's matches;
+    # first-time schedule for this tool, adjust freely once you see how
+    # it behaves.
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Spin Line
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+        run: python3 spin_line.py
+
+      - name: Commit and push updated slate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          [ -d docs/spin-line ] && git add docs/spin-line/ || true
+          git diff --staged --quiet || git commit -m "Update Spin Line daily slate"
+          git pull --rebase --autostash origin main
+          git push
