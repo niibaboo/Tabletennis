@@ -2,13 +2,16 @@ name: Spin Line
 
 on:
   schedule:
-    # Setka Cup / TT Cup / Czech Liga Pro / TT Elite Series run as rapid
-    # studio matches most of the day, not a fixed evening slot like the
-    # other leagues in this suite. Picked a mid-morning UTC run so the
-    # day's slate is ready well ahead of the bulk of the day's matches;
-    # first-time schedule for this tool, adjust freely once you see how
-    # it behaves.
-    - cron: '0 9 * * *'
+    # CONFIRMED (2026-10-03, user screenshots): Setka Cup / TT Cup / Czech
+    # Liga Pro / TT Elite Series run as rapid studio matches all day, with
+    # the same small player pool cycling through back-to-back rounds
+    # (~2hrs apart) -- BetsAPI only locks in each round's actual pairing
+    # shortly before it's played, so a single once-a-day 9am build goes
+    # stale by evening: the players are still correct, but who they're
+    # actually paired against by kickoff has moved on several rounds.
+    # Rebuilding hourly keeps each card's pairing close to what's really
+    # about to be played, at the cost of ~24 BetsAPI runs/day instead of 1.
+    - cron: '0 * * * *'
   workflow_dispatch: {}
 
 permissions:
