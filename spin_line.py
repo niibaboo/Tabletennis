@@ -523,9 +523,25 @@ def format_kickoff(epoch_str):
 
 def render_match_card(league_name, home_name, away_name, p_home_game, p_away_game,
                        p_home_match, p_away_match, total_lambda, total_line, total_prob,
-                       home_proj, away_proj, kickoff="--:--"):
+                       home_proj, away_proj, kickoff="--:--",
+                       p_home_cover=None, p_away_cover=None,
+                       home_scorelines=None, away_scorelines=None):
     home_hist = "/".join(home_proj["results"][-5:]) or "-"
     away_hist = "/".join(away_proj["results"][-5:]) or "-"
+
+    handicap_row = ""
+    if p_home_cover is not None and p_away_cover is not None:
+        handicap_row = f"""<p style="margin:6px 0 0 0;color:var(--sub);font-size:13px">Game Handicap -1.5: {away_name} {p_away_cover*100:.0f}% · {home_name} {p_home_cover*100:.0f}%</p>"""
+
+    score_row = ""
+    if home_scorelines and away_scorelines:
+        combined = (
+            [(f"{home_name} {gf}-{ga}", pr) for (gf, ga), pr in home_scorelines.items()]
+            + [(f"{away_name} {gf}-{ga}", pr) for (gf, ga), pr in away_scorelines.items()]
+        )
+        top2 = sorted(combined, key=lambda kv: -kv[1])[:2]
+        top2_str = " · ".join(f"{label} ({pr*100:.0f}%)" for label, pr in top2)
+        score_row = f"""<p style="margin:4px 0 0 0;color:var(--sub);font-size:13px">Most likely scores: {top2_str}</p>"""
 
     win_bar = f"""<div style="margin:10px 0 6px 0">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;margin-bottom:4px">
@@ -549,6 +565,8 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
       <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name} — Total {total_lambda:.1f} games</h3>
       <p style="margin:0;color:var(--sub);font-size:13px">Per-game win rate: {away_name} {p_away_game*100:.0f}% · {home_name} {p_home_game*100:.0f}% | O{total_line} games {total_prob*100:.0f}%</p>
       {win_bar}
+      {handicap_row}
+      {score_row}
     </div>"""
 
 
@@ -748,6 +766,8 @@ def build_legs_and_cards(target_date):
                         league["name"], home_name, away_name, p_home_game, p_away_game,
                         p_home_match, p_away_match, total_lambda, line, prob, home_proj, away_proj,
                         kickoff=kickoff,
+                        p_home_cover=p_home_cover, p_away_cover=p_away_cover,
+                        home_scorelines=home_scorelines, away_scorelines=away_scorelines,
                     )
 
             for name, proj, is_home in ((home_name, home_proj, True), (away_name, away_proj, False)):
