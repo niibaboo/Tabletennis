@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-Spin Line — Table Tennis Match Winner, Total Games & Correct Score
+Spin Line — Table Tennis Match Winner, Game Handicap & Correct Score
 --------------------------------------------------------------
 Match-level predictor for the bet365 table-tennis cup/league slate --
 Setka Cup, TT Cup, Czech Liga Pro, TT Elite Series -- built on BetsAPI
 (https://betsapi.com, docs at https://betsapi.com/docs/). Markets:
-Match Winner (log5 per-game rate -> race-to-N match probability) and
-Total Games (recency-weighted pace, Poisson-priced, same pattern as
-every other tool in this suite). NOTE: originally scoped as "Total
-Points" per the user's request -- re-scoped to Total Games after a
-live sample confirmed BetsAPI's event/history has no per-set POINTS
-data at all, only the final games-won score. See the CONFIRMED block
-below.
+Match Winner (log5 per-game rate -> race-to-N match probability), Game
+Handicap (-1.5/+1.5), Correct Score, 1st Game Winner, and 1st Game
+Correct Score. NOTE: originally scoped to also include a "Total
+Points"/"Total Games" market -- built, then REMOVED on 2026-10-04 once
+the user confirmed bet365 doesn't actually offer either as a market for
+these leagues (points data was never there either way -- see the
+CONFIRMED block below). Every market left in this file is one the user
+can actually place on bet365.
 
 WHY BETSAPI, NOT THESTATSAPI: TheStatsAPI (used by Match IQ / Cards &
 Corners IQ / Player Stat Model) is football-only -- confirmed, not
@@ -177,17 +178,32 @@ MAX_NEW_CACHE_FETCHES_PER_RUN = 300  # bounds API usage per run -- the cache
                                       # blow the rate limit) in one go
 GAME1_MIN_SAMPLES = 3  # don't post a 1st Game Winner leg off 1-2 cached
                         # past matches -- too thin to trust
+GAME1_SCORE_MIN_SAMPLES = 15  # minimum POOLED (not per-matchup) game-1
+                               # exact-score samples before exposing 1st
+                               # Game Correct Score at all -- a game-to-11
+                               # (win-by-2) scoreline distribution is a
+                               # shared physical pattern across players, so
+                               # pooling reaches a usable sample size much
+                               # faster than tracking it per matchup would
 
 _event_view_cache = {}
 _new_cache_fetches = 0
 
 
 def load_event_view_cache():
+    """Loads the cache, silently upgrading any pre-Correct-Score entries
+    (plain 'home'/'away' strings, from before game-1 EXACT SCORES were
+    also cached) into the current {'winner':..., 'score': [h,a] or None}
+    shape, so downstream code only ever has to deal with one format."""
     global _event_view_cache
     if os.path.exists(EVENT_VIEW_CACHE_PATH):
         try:
             with open(EVENT_VIEW_CACHE_PATH) as f:
-                _event_view_cache = json.load(f)
+                raw = json.load(f)
+            _event_view_cache = {
+                k: ({"winner": v, "score": None} if isinstance(v, str) else v)
+                for k, v in raw.items()
+            }
         except Exception as e:
             print(f"  [!] couldn't read event_view_cache.json ({e}) -- starting empty")
             _event_view_cache = {}
@@ -200,13 +216,15 @@ def save_event_view_cache():
         json.dump(_event_view_cache, f)
 
 
-def get_game1_result(event_id):
-    """Returns 'home' or 'away' -- who won game 1 of this specific,
-    already-FINISHED past match -- using the local cache first and only
-    calling event/view on a cache miss (and only while under this run's
-    MAX_NEW_CACHE_FETCHES_PER_RUN budget). Returns None if not cached,
-    the budget's used up, the match isn't actually finished yet, or
-    the response can't be parsed -- callers should just skip that
+def _fetch_and_cache_game1(event_id):
+    """Shared cache/fetch path for everything game-1-related (1st Game
+    Winner AND 1st Game Correct Score) -- using the local cache first and
+    only calling event/view on a cache miss (and only while under this
+    run's MAX_NEW_CACHE_FETCHES_PER_RUN budget), so a matchup that needs
+    both the winner and the exact score only costs one lookup, not two.
+    Returns {'winner': 'home'/'away', 'score': [h, a]} or None if not
+    cached, the budget's used up, the match isn't actually finished yet,
+    or the response can't be parsed -- callers should just skip that
     historical match rather than guess."""
     global _new_cache_fetches
     key = str(event_id)
@@ -234,9 +252,53 @@ def get_game1_result(event_id):
     except (TypeError, ValueError):
         return None
 
-    winner = "home" if h > a else "away"
-    _event_view_cache[key] = winner  # finished result never changes -- cache forever
-    return winner
+    info = {"winner": "home" if h > a else "away", "score": [h, a]}
+    _event_view_cache[key] = info  # finished result never changes -- cache forever
+    return info
+
+
+def get_game1_result(event_id):
+    """Returns 'home' or 'away' -- who won game 1 of this specific,
+    already-FINISHED past match. See _fetch_and_cache_game1 for the
+    cache/fetch/budget mechanics this sits on top of."""
+    info = _fetch_and_cache_game1(event_id)
+    return info["winner"] if info else None
+
+
+def get_game1_score(event_id):
+    """Returns (home_points, away_points) for game 1 of this specific,
+    already-FINISHED past match, or None if unknown -- either because
+    the match itself can't be resolved (see _fetch_and_cache_game1), or
+    because it's a pre-Correct-Score cache entry that only ever recorded
+    the winner, not the exact score (see load_event_view_cache's
+    upgrade step; those entries stay score-less forever since a finished
+    result is never re-fetched)."""
+    info = _fetch_and_cache_game1(event_id)
+    if not info or info.get("score") is None:
+        return None
+    return tuple(info["score"])
+
+
+def game1_scoreline_distribution():
+    """Pooled (not per-matchup) frequency of every known game-1 exact
+    scoreline across ALL cached finished events, regardless of league or
+    player -- {(winner_points, loser_points): fraction}. Pooling is the
+    point: a game-to-11 (win-by-2) scoreline is a shared physical pattern
+    (11-9, 11-7, 11-5, 12-10, ...), not something that varies enough by
+    player to need its own per-matchup sample, so this reaches a usable
+    size far faster than GAME1_MIN_SAMPLES-per-player ever could. Returns
+    ({}, n) when fewer than GAME1_SCORE_MIN_SAMPLES are cached -- n is
+    the sample size either way, for the detail text."""
+    pairs = [tuple(v["score"]) for v in _event_view_cache.values()
+             if isinstance(v, dict) and v.get("score")]
+    if len(pairs) < GAME1_SCORE_MIN_SAMPLES:
+        return {}, len(pairs)
+    counts = {}
+    for h, a in pairs:
+        key = (h, a) if h > a else (a, h)  # (winner_points, loser_points)
+        counts[key] = counts.get(key, 0) + 1
+    total = len(pairs)
+    return {k: v / total for k, v in counts.items()}, total
 
 
 def _get(version, path, params=None, cycles=4, timeout=20):
@@ -421,8 +483,11 @@ def parse_games_won(ss):
 def project_player(history, player_id, weight=RECENT_WEIGHT):
     """From a player's own past-event list (oldest-first), derive:
       - match_games_avg: recency-weighted avg of TOTAL games played per
-        match (games won + games lost) -- the Total Games market's pace
-        indicator. (Originally scoped as a points-based "Total Points"
+        match (games won + games lost). Computed but currently UNUSED by
+        any active market -- it fed the Total Games market, removed
+        2026-10-04 (bet365 doesn't actually offer it for these leagues).
+        Left in place since it's cheap to compute and harmless to keep
+        around. (Originally scoped as a points-based "Total Points"
         pace -- re-scoped after a live sample confirmed BetsAPI's
         event/history has no per-set points data at all, only the
         final games-won score. See module docstring CONFIRMED block.)
@@ -522,7 +587,7 @@ def format_kickoff(epoch_str):
 
 
 def render_match_card(league_name, home_name, away_name, p_home_game, p_away_game,
-                       p_home_match, p_away_match, total_lambda, total_line, total_prob,
+                       p_home_match, p_away_match,
                        home_proj, away_proj, kickoff="--:--",
                        p_home_cover=None, p_away_cover=None,
                        home_scorelines=None, away_scorelines=None):
@@ -562,8 +627,8 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
 
     return f"""<div class="builderPanel">
       <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.03em">{league_name} · {kickoff}</div>
-      <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name} — Total {total_lambda:.1f} games</h3>
-      <p style="margin:0;color:var(--sub);font-size:13px">Per-game win rate: {away_name} {p_away_game*100:.0f}% · {home_name} {p_home_game*100:.0f}% | O{total_line} games {total_prob*100:.0f}%</p>
+      <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name}</h3>
+      <p style="margin:0;color:var(--sub);font-size:13px">Per-game win rate: {away_name} {p_away_game*100:.0f}% · {home_name} {p_home_game*100:.0f}%</p>
       {win_bar}
       {handicap_row}
       {score_row}
@@ -726,49 +791,50 @@ def build_legs_and_cards(target_date):
                         "home_name": home_name, "away_name": away_name, "match_date": match_date,
                     })
 
-            # --- Total Games (per-player pace + blended match total) --------
-            for name, proj, opp_name in ((home_name, home_proj, away_name), (away_name, away_proj, home_name)):
-                line = safe_line(proj["match_games_avg"])
-                if not line:
-                    continue
-                prob = prob_over(proj["match_games_avg"], line)
-                legs.append({
-                    "match": match_label, "subject": name,
-                    "market": f"{name}'s matches Over {line} Total Games",
-                    "prob": round(prob * 100),
-                    "hit_rate": hit_rate(proj["match_games_history"], line),
-                    "category": f"{league['name']} Player Game Total",
-                    "detail": f"avg {proj['match_games_avg']} games/match (their own matches, not just vs {opp_name})",
-                    "history": "/".join(str(v) for v in proj["match_games_history"]) or None,
-                    "event_id": event_id, "league_name": league["name"],
-                    "home_name": home_name, "away_name": away_name, "match_date": match_date,
-                })
+                # --- 1st Game Correct Score -----------------------------
+                # Exact game-1 scoreline -- each player's own win rate
+                # (above) times the POOLED scoreline distribution (see
+                # game1_scoreline_distribution's own docstring for why
+                # pooling, not per-matchup, is the right sample here).
+                # Gated separately from 1st Game Winner: needs both a
+                # matchup-level win rate AND enough pooled score samples,
+                # so this lags behind 1st Game Winner appearing at all.
+                score_dist, score_n = game1_scoreline_distribution()
+                if score_dist:
+                    top_scores = sorted(score_dist.items(), key=lambda kv: -kv[1])[:3]
+                    for name, p_g1, opp in (
+                        (home_name, p_home_g1, away_name),
+                        (away_name, p_away_g1, home_name),
+                    ):
+                        for (ws, ls), frac in top_scores:
+                            legs.append({
+                                "match": match_label, "subject": name,
+                                "market": f"{name} to win Game 1 {ws}-{ls}",
+                                "prob": round(p_g1 * frac * 100),
+                                "hit_rate": None,
+                                "category": f"{league['name']} 1st Game Correct Score",
+                                "detail": f"game 1 ends {ws}-{ls} in {frac*100:.0f}% of {score_n} cached game-1 results (any player) vs {opp}",
+                                "history": None,
+                                "event_id": event_id, "league_name": league["name"],
+                                "home_name": home_name, "away_name": away_name, "match_date": match_date,
+                            })
 
-            total_lambda = (home_proj["match_games_avg"] + away_proj["match_games_avg"]) / 2
-            line = safe_line(total_lambda)
-            if line:
-                prob = prob_over(total_lambda, line)
-                legs.append({
-                    "match": match_label, "subject": match_label,
-                    "market": f"Match Over {line} Total Games",
-                    "prob": round(prob * 100),
-                    "hit_rate": None,  # blended pace, not a real shared history -- same
-                                       # reasoning as Euro Ice's Game Total leg
-                    "category": f"{league['name']} Game Total",
-                    "detail": f"blended pace {round(total_lambda, 1)} games",
-                    "history": None,
-                    "event_id": event_id, "league_name": league["name"],
-                    "home_name": home_name, "away_name": away_name, "match_date": match_date,
-                })
-
-                if p_home_match is not None:
-                    cards += render_match_card(
-                        league["name"], home_name, away_name, p_home_game, p_away_game,
-                        p_home_match, p_away_match, total_lambda, line, prob, home_proj, away_proj,
-                        kickoff=kickoff,
-                        p_home_cover=p_home_cover, p_away_cover=p_away_cover,
-                        home_scorelines=home_scorelines, away_scorelines=away_scorelines,
-                    )
+            # NOTE (2026-10-04): Player Game Total and Game Total (both
+            # Total Games markets) were REMOVED here -- user-confirmed
+            # these aren't actual bet365 markets for these leagues, so
+            # there's nothing to act on. Pulled from the bet builder, the
+            # per-match card header, and the results tracker alike; see
+            # this file's git history for the removed Poisson-pricing
+            # code (prob_over/safe_line/hit_rate are now unused by this
+            # module but left in place in case a real market needs them).
+            if p_home_match is not None:
+                cards += render_match_card(
+                    league["name"], home_name, away_name, p_home_game, p_away_game,
+                    p_home_match, p_away_match, home_proj, away_proj,
+                    kickoff=kickoff,
+                    p_home_cover=p_home_cover, p_away_cover=p_away_cover,
+                    home_scorelines=home_scorelines, away_scorelines=away_scorelines,
+                )
 
             for name, proj, is_home in ((home_name, home_proj, True), (away_name, away_proj, False)):
                 streak_len = _current_win_streak(proj["results"])
@@ -800,7 +866,7 @@ STREAK_PANEL_TEMPLATE = """<div class="builderPanel">
   <div class="builderTitle">🔥 Win Streak</div>
   <div style="font-size:11px;color:var(--sub);margin-bottom:10px">
     Genuinely CONSECUTIVE match wins (no break), reconstructed from recent finished matches --
-    informational, not blended into the Match Winner or Total Games projections above.
+    informational, not blended into any projection above.
   </div>
   {entries}
 </div>"""
@@ -842,7 +908,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .footnote{{font-size:11px; color:var(--sub); text-align:center; margin-top:20px; line-height:1.6;}}
 </style></head>
 <body>
-  <h1>🏓 Spin Line — Match Winner &amp; Total Games</h1>
+  <h1>🏓 Spin Line — Match Winner, Handicap &amp; Correct Score</h1>
   <div class="sub">Setka Cup · TT Cup · Czech Liga Pro · TT Elite Series — {date} · generated {generated}</div>
   <p style="text-align:center;margin:4px 0 0;font-size:12px"><a href="results/index.html" style="color:#f59e0b;text-decoration:none">📊 Results Tracker</a></p>
 
@@ -859,8 +925,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <div id="builderResult" class="builderResult">
       Untick any market you don't want considered, set a target odds and leg cap, then tap
-      Build. Caps at 2 legs per player/matchup to avoid stacking a player's own legs against
-      the same game's blended total. Tap Shuffle for a fresh pick without changing your settings.
+      Build. Caps at 2 legs per player/matchup to avoid stacking a player's own legs on top of
+      each other. Tap Shuffle for a fresh pick without changing your settings.
     </div>
   </div>
 
@@ -876,14 +942,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     (3-2) -- the only meaningful handicap line in a race-to-3 format. Correct Score breaks that
     same race-to-3 math down into each individual exact scoreline (3-0/3-1/3-2 for either
     player) -- no new computation, just the full breakdown Game Handicap only partially summed.
-    Total Games blends each player's own recency-weighted total-games-
-    per-match pace (games won + games lost, not a real shared history) and prices with a
-    Poisson distribution, same convention as every other tool in this suite -- re-scoped from
-    an originally planned Total Points market after a live sample confirmed BetsAPI has no
-    per-set points data for these leagues, only the final games-won score. 1st Game Winner uses
+    1st Game Winner uses
     each player's own recency-weighted rate of winning game 1 of their matches, combined via
     log5 — coverage builds up gradually over time via a local cache (one extra lookup per past
-    match, capped per run), so it won't appear for every matchup yet. Win Streak is
+    match, capped per run), so it won't appear for every matchup yet. 1st Game Correct Score
+    takes that same per-player game-1 win rate and multiplies it by a POOLED scoreline
+    distribution (every cached game-1 exact score, across all players and leagues, not just this
+    matchup) — a game-to-11 win-by-2 scoreline is a shared physical pattern, so pooling reaches a
+    usable sample much faster than tracking it per matchup; it lags behind 1st Game Winner
+    appearing at all, since it needs its own larger pooled sample on top of that. Win Streak is
     informational only — genuinely consecutive match wins, not blended into any projection.
   </div>
 
