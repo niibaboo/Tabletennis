@@ -18,10 +18,15 @@ the assumption this file made for event/view's own "ss" field was
 right, and it's also the convention spin_line.py's project_player()
 now uses for event/history's past-event entries (an earlier version of
 that function assumed "ss" was subject-first, which was wrong and is
-now fixed). CONFIRMED ABSENT: there's no per-set "scores" field
-anywhere in this API's table-tennis responses, so the "Player Pace
-(Total Points)" scanner below is re-scoped to "Player Games (Total
-Games)", using the real games-won data from "ss" instead.
+now fixed). The original "Player Pace (Total Points)" scanner was
+re-scoped to "Player Games (Total Games)" once a live sample confirmed
+there's no per-set "scores" field on event/history's past-event
+entries (only the final games-won "ss") -- and that market was then
+REMOVED ENTIRELY on 2026-10-04 (along with the blended "Game Total"
+leg) once the user confirmed bet365 doesn't actually offer either as a
+real market for these leagues. No "player_games"/"game_total" scanner
+exists in this file any more; see spin_line.py's own module docstring
+for the matching removal on the prediction side.
 
 Designed to be imported and called from spin_line.py's main() --
 save this file as spin_line_results_tracker.py in the same folder.
@@ -95,17 +100,6 @@ def parse_ss_home_away(ss):
         return None
 
 
-def parse_total_games(event):
-    """Total games played in a finished match (home games + away games),
-    straight from "ss" -- replaces the original points-based
-    parse_total_points(), which read a "scores" field CONFIRMED absent
-    from this API (see module docstring)."""
-    games = parse_ss_home_away(event.get("ss"))
-    if games is None:
-        return None
-    return games[0] + games[1]
-
-
 def parse_game1_winner(event):
     """'home' or 'away' -- who won game 1 of this FINISHED match. Unlike
     event/history's past-event entries (only the final "ss"), a
@@ -124,6 +118,22 @@ def parse_game1_winner(event):
     except (TypeError, ValueError):
         return None
     return "home" if h > a else "away"
+
+
+def parse_game1_score(event):
+    """(home_points, away_points) for game 1 of this FINISHED match, or
+    None if unparseable -- same "scores" dict as parse_game1_winner,
+    just returning the exact points instead of collapsing them to a
+    winner (mirrors spin_line.py's get_game1_score(), used for
+    verifying 1st Game Correct Score picks)."""
+    scores = event.get("scores")
+    if not isinstance(scores, dict) or "1" not in scores:
+        return None
+    g1 = scores.get("1") or {}
+    try:
+        return int(g1.get("home")), int(g1.get("away"))
+    except (TypeError, ValueError):
+        return None
 
 
 def _entry_id(scanner, subject, event_id, market):
@@ -149,11 +159,11 @@ def save_log(entries):
 
 
 def log_todays_signals(legs, log):
-    """Logs Match Winner, Player Game Total, 1st Game Winner, Game
-    Handicap, and Correct Score legs. Game Total legs are skipped, same
-    convention/reasoning as Euro Ice's tracker: they blend two players'
-    SEPARATE pace histories, not a real shared record, so there's no
-    single real "side" being claimed the way there is for the others."""
+    """Logs Match Winner, 1st Game Winner, Game Handicap, Correct Score,
+    and 1st Game Correct Score legs. (Player Game Total / Game Total
+    were REMOVED 2026-10-04 -- user-confirmed bet365 doesn't offer
+    either as a market for these leagues, so there was nothing to
+    verify against a real bet in the first place.)"""
     existing_ids = {e["id"] for e in log}
     added = 0
 
@@ -180,17 +190,6 @@ def log_todays_signals(legs, log):
             add("match_winner", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
-        elif cat.endswith("Player Game Total"):
-            # line is embedded in the market string ("... Over {line} ...");
-            # pull it back out rather than threading a separate field through
-            # just for this.
-            try:
-                line = float(leg["market"].split("Over ")[1].split(" ")[0])
-            except (IndexError, ValueError):
-                continue
-            add("player_games", leg["subject"], leg["market"], f"line={line}",
-                leg["league_name"], leg["event_id"], leg["match_date"],
-                leg["home_name"], leg["away_name"])
         elif cat.endswith("1st Game Winner"):
             add("game1_winner", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
@@ -198,16 +197,31 @@ def log_todays_signals(legs, log):
         elif cat.endswith("Game Handicap"):
             # -1.5/+1.5 is the only line this market ever uses (see
             # spin_line.py's module docstring/race_scoreline_probs) --
-            # no line to re-parse out of the market string, unlike
-            # Player Game Total's variable Over/Under line.
+            # no line to re-parse out of the market string.
             add("game_handicap", leg["subject"], leg["market"], leg.get("detail"),
+                leg["league_name"], leg["event_id"], leg["match_date"],
+                leg["home_name"], leg["away_name"])
+        elif cat.endswith("1st Game Correct Score"):
+            # Checked BEFORE the plain "Correct Score" branch below --
+            # "...1st Game Correct Score" also ends with "Correct Score",
+            # so the more specific category must be matched first or it
+            # would always fall into the match-level branch instead.
+            # predicted scoreline is embedded the same way as the match-
+            # level Correct Score, just "Game 1" in the middle of the
+            # market string instead of straight after the name.
+            try:
+                ws, ls = leg["market"].split("to win Game 1 ")[1].split("-")
+                int(ws), int(ls)
+            except (IndexError, ValueError):
+                continue
+            add("game1_correct_score", leg["subject"], leg["market"], f"score={ws}-{ls}",
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
         elif cat.endswith("Correct Score"):
             # predicted scoreline is embedded in the market string
             # ("{name} to win {gf}-{ga}"), from the SUBJECT's own
             # perspective (gf is always the subject's games) -- pull it
-            # back out the same way Player Game Total does for its line.
+            # back out of the market string directly.
             try:
                 gf, ga = leg["market"].split("to win ")[1].split("-")
                 int(gf), int(ga)
@@ -246,17 +260,6 @@ def _verify_match_winner_entry(entry):
     subject_games = home_games if subject_is_home else away_games
     opp_games = away_games if subject_is_home else home_games
     return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if subject_games > opp_games else "miss"}
-
-
-def _verify_player_games_entry(entry):
-    event = _get_finished_event(entry["event_id"])
-    if not event:
-        return None
-    total = parse_total_games(event)
-    if total is None:
-        return None
-    line = float(entry["detail"].split("=")[1])
-    return {"actual": total, "result": "hit" if total > line else "miss"}
 
 
 def _verify_game1_winner_entry(entry):
@@ -310,6 +313,27 @@ def _verify_correct_score_entry(entry):
     return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if hit else "miss"}
 
 
+def _verify_game1_correct_score_entry(entry):
+    """Exact game-1 scoreline, from the subject's own perspective (the
+    predicted "ws-ls" is always subject's-points-first, since that's how
+    spin_line.py's leg market string is built) -- verified against the
+    real per-game "scores" dict, same source as parse_game1_winner."""
+    event = _get_finished_event(entry["event_id"])
+    if not event:
+        return None
+    game1 = parse_game1_score(event)
+    if game1 is None:
+        return None
+    home_pts, away_pts = game1
+    subject_is_home = entry["subject"] == entry["home_name"]
+    subject_pts = home_pts if subject_is_home else away_pts
+    opp_pts = away_pts if subject_is_home else home_pts
+    predicted = entry["detail"].split("=")[1]  # "ws-ls"
+    pred_ws, pred_ls = (int(x) for x in predicted.split("-"))
+    hit = (subject_pts == pred_ws) and (opp_pts == pred_ls)
+    return {"actual": f"{subject_pts}-{opp_pts}", "result": "hit" if hit else "miss"}
+
+
 def verify_pending_results(log, max_checks=60):
     today = datetime.now(timezone.utc).date().isoformat()
     checked = 0
@@ -328,14 +352,14 @@ def verify_pending_results(log, max_checks=60):
         try:
             if entry["scanner"] == "match_winner":
                 result = _verify_match_winner_entry(entry)
-            elif entry["scanner"] == "player_games":
-                result = _verify_player_games_entry(entry)
             elif entry["scanner"] == "game1_winner":
                 result = _verify_game1_winner_entry(entry)
             elif entry["scanner"] == "game_handicap":
                 result = _verify_game_handicap_entry(entry)
             elif entry["scanner"] == "correct_score":
                 result = _verify_correct_score_entry(entry)
+            elif entry["scanner"] == "game1_correct_score":
+                result = _verify_game1_correct_score_entry(entry)
         except Exception as e:
             print(f"    [!] verification error for entry {entry['id']} ({entry['scanner']}): {e}")
             result = None
@@ -362,10 +386,10 @@ def build_results_dashboard(log):
 
     SCANNER_LABELS = {
         "match_winner": "Match Winner",
-        "player_games": "Player Games (Total Games)",
         "game1_winner": "1st Game Winner",
         "game_handicap": "Game Handicap (-1.5)",
         "correct_score": "Correct Score",
+        "game1_correct_score": "1st Game Correct Score",
     }
 
     total_hit = sum(d["hit"] for d in by_scanner.values())
@@ -419,12 +443,11 @@ def build_results_dashboard(log):
 </div>
 
 <div style="font-size:11px;color:var(--sub);text-align:center;margin-top:20px;line-height:1.6">
-  Game Total legs aren't tracked here — they blend two players' separate pace histories into
-  one number, so there's no single real "side" to check against (same reasoning as Euro Ice's
-  Game Total). Player Games, Game Handicap and Correct Score all verify against the real final
-  games-won score ("ss"); 1st Game Winner verifies against the finished match's "scores" dict
-  (final score of each individual game) — all confirmed against live BetsAPI samples, see
-  spin_line_results_tracker.py's module docstring.
+  Game Handicap and Correct Score both verify against the real final games-won score ("ss");
+  1st Game Winner and 1st Game Correct Score both verify against the finished match's "scores"
+  dict (final score of each individual game) — all confirmed against live BetsAPI samples, see
+  spin_line_results_tracker.py's module docstring. (The old total-games-based markets were
+  removed entirely on 2026-10-04 — bet365 doesn't offer them as real markets for these leagues.)
 </div>
 </body></html>"""
 
