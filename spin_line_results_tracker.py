@@ -502,6 +502,17 @@ def build_results_dashboard(log):
         d = by_scanner.setdefault(e["scanner"], {"hit": 0, "miss": 0})
         d[e["result"]] += 1
 
+    # By-tournament breakdown (added 2026-10-05, user request): Setka Cup /
+    # TT Cup / Czech Liga Pro are race-to-3 (best of 5 games), TT Elite
+    # Series is race-to-2 (best of 3) -- different match lengths behave
+    # differently under the same per-game-rate model, so the user wants to
+    # see which specific tournament the model's signals are actually
+    # landing on, not just which market type.
+    by_league = {}
+    for e in verified:
+        d = by_league.setdefault(e.get("league") or "Unknown", {"hit": 0, "miss": 0})
+        d[e["result"]] += 1
+
     SCANNER_LABELS = {
         "match_winner": "Match Winner",
         "game1_winner": "1st Game Winner",
@@ -526,6 +537,19 @@ def build_results_dashboard(log):
   <span style="color:var(--green);font-weight:bold">{pct_str}</span>
   <span style="color:var(--sub);font-size:12px">{d['hit']}/{n}</span>
 </div>"""
+
+    league_rows = ""
+    for league, d in sorted(by_league.items(), key=lambda kv: -(kv[1]["hit"] + kv[1]["miss"])):
+        n = d["hit"] + d["miss"]
+        pct = round(100 * d["hit"] / n) if n else None
+        pct_str = f"{pct}%" if pct is not None else "—"
+        league_rows += f"""<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+  <span>{league}</span>
+  <span style="color:var(--green);font-weight:bold">{pct_str}</span>
+  <span style="color:var(--sub);font-size:12px">{d['hit']}/{n}</span>
+</div>"""
+    if not league_rows:
+        league_rows = '<p style="color:var(--sub);font-size:12px">No verified picks yet.</p>'
 
     recent = sorted(verified, key=lambda e: e.get("verified_at", ""), reverse=True)[:30]
     recent_rows = ""
@@ -553,6 +577,12 @@ def build_results_dashboard(log):
 <div style="background:var(--panel);border-radius:12px;padding:16px;margin:14px 0;border:1px solid var(--border)">
   <div style="font-weight:bold;margin-bottom:8px">By Category</div>
   {rows}
+</div>
+
+<div style="background:var(--panel);border-radius:12px;padding:16px;margin:14px 0;border:1px solid var(--border)">
+  <div style="font-weight:bold;margin-bottom:8px">By Tournament</div>
+  <div style="color:var(--sub);font-size:11px;margin-bottom:8px">All markets combined, per tournament</div>
+  {league_rows}
 </div>
 
 <div style="background:var(--panel);border-radius:12px;padding:16px;margin:14px 0;border:1px solid var(--border)">
