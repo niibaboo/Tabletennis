@@ -28,6 +28,31 @@ real market for these leagues. No "player_games"/"game_total" scanner
 exists in this file any more; see spin_line.py's own module docstring
 for the matching removal on the prediction side.
 
+CONFIRMED (2026-10-05, from a live dashboard showing 22,524 pending vs
+only 490 ever verified, and every newer market stuck at 0/0): two
+compounding bugs. (1) log_todays_signals() used to log a pick for
+EVERY match in the day's full slate on every hourly run (spin_line.py
+moved to hourly rebuilds on 2026-10-03 to fix stale card pairings) --
+but these studio leagues keep reshuffling who's actually paired
+against whom, so most logged picks described a pairing that got
+reassigned before it was ever played: that event_id never reaches
+time_status=3, so the pick sits "pending" forever. Fixed by only
+logging a pick once its match's kickoff is within LOG_WINDOW_HOURS --
+by then the pairing has very likely settled. (2) date_key was computed
+as `(date or "")[:10]` assuming an ISO datetime string, but
+spin_line.py's leg["match_date"] is actually a raw BetsAPI UNIX epoch
+string (e.g. "1790944800") -- slicing that gives back the same epoch
+string, which SORTS BEFORE any real ISO date lexicographically, so
+verify_pending_results' `entry["date_key"] >= today` gate never
+skipped anything: every pending entry, even ones for matches that
+hadn't kicked off yet, was treated as "due to check" immediately. With
+thousands of phantom entries from bug (1) sitting earliest in log
+order, the fixed 60-per-run verification budget got burned on them
+every single run, and genuinely verifiable newer-market entries never
+got reached. Fixed with _date_key()/_kickoff_epoch(), which parse the
+real epoch correctly. The pre-existing backlog these two bugs produced
+is pruned outright by prune_dead_pending() rather than kept around.
+
 Designed to be imported and called from spin_line.py's main() --
 save this file as spin_line_results_tracker.py in the same folder.
 
@@ -141,6 +166,55 @@ def _entry_id(scanner, subject, event_id, market):
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+LOG_WINDOW_HOURS = 2  # only log a pick once its match's kickoff is this close -- see
+                       # module docstring's CONFIRMED block (2026-10-05): logging every
+                       # match in the day's full slate on every hourly run flooded this
+                       # log with picks for pairings that got reshuffled before they were
+                       # ever actually played. By this point the pairing has very likely
+                       # settled (user's explicit choice over a 1-hour window).
+
+PENDING_EXPIRY_HOURS = 48  # a pending pick whose match kicked off this long ago and still
+                           # hasn't resolved is almost certainly a phantom pairing that got
+                           # reshuffled before it was ever played -- prune it outright
+                           # (user's explicit choice over tagging it "expired" and keeping
+                           # it) rather than let it sit in the log forever eating into
+                           # verify_pending_results' per-run budget.
+
+
+def _kickoff_epoch(date_str):
+    """Match kickoff as a UTC epoch int. leg["match_date"] (and so
+    entry["match_date"]) is normally a raw BetsAPI UNIX epoch STRING
+    (e.g. "1790944800"), but tests use an ISO datetime string (e.g.
+    "2026-10-05T12:00:00+00:00") -- handles either. Returns None if
+    unparseable."""
+    if not date_str:
+        return None
+    s = str(date_str)
+    if s.lstrip("-").isdigit():
+        try:
+            return int(s)
+        except ValueError:
+            return None
+    try:
+        return int(datetime.fromisoformat(s).timestamp())
+    except ValueError:
+        return None
+
+
+def _date_key(date_str):
+    """Normalizes match_date into a plain YYYY-MM-DD, handling the same
+    raw-epoch-vs-ISO-string situation as _kickoff_epoch -- see this
+    file's module docstring (CONFIRMED 2026-10-05) for why this matters:
+    the old `(date or "")[:10]` slice, applied to a real epoch string,
+    produced a result that always sorted BEFORE any genuine ISO date,
+    silently breaking verify_pending_results' "wait until the match is
+    actually in the past" gate."""
+    epoch = _kickoff_epoch(date_str)
+    if epoch is None:
+        return (date_str or "")[:10]
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).date().isoformat()
+
+
 def load_log():
     if not os.path.exists(LOG_PATH):
         return []
@@ -158,14 +232,23 @@ def save_log(entries):
         json.dump(entries, f, indent=2, default=str)
 
 
-def log_todays_signals(legs, log):
+def log_todays_signals(legs, log, now=None):
     """Logs Match Winner, 1st Game Winner, Game Handicap, Correct Score,
     and 1st Game Correct Score legs. (Player Game Total / Game Total
     were REMOVED 2026-10-04 -- user-confirmed bet365 doesn't offer
     either as a market for these leagues, so there was nothing to
-    verify against a real bet in the first place.)"""
+    verify against a real bet in the first place.)
+
+    Only logs a leg once its match's kickoff is within LOG_WINDOW_HOURS
+    -- see this file's module docstring (CONFIRMED 2026-10-05) for why:
+    logging every match in the day's full slate on every hourly run
+    flooded the log with picks for pairings that got reshuffled before
+    they were ever actually played. `now` is injectable (as a UTC epoch
+    float) for deterministic tests; defaults to the real current time."""
+    now = now if now is not None else datetime.now(timezone.utc).timestamp()
     existing_ids = {e["id"] for e in log}
     added = 0
+    not_yet_close = 0
 
     def add(scanner, subject, market, detail, league, event_id, date,
              home_name, away_name):
@@ -177,7 +260,7 @@ def log_todays_signals(legs, log):
             "id": eid, "scanner": scanner, "subject": subject, "market": market,
             "detail": detail, "league": league, "event_id": event_id,
             "home_name": home_name, "away_name": away_name,
-            "match_date": date, "date_key": (date or "")[:10],
+            "match_date": date, "date_key": _date_key(date),
             "logged_at": datetime.now(timezone.utc).isoformat(),
             "status": "pending", "result": None, "actual": None,
         })
@@ -185,6 +268,10 @@ def log_todays_signals(legs, log):
         added += 1
 
     for leg in legs:
+        kickoff = _kickoff_epoch(leg.get("match_date"))
+        if kickoff is None or not (0 <= kickoff - now <= LOG_WINDOW_HOURS * 3600):
+            not_yet_close += 1
+            continue
         cat = leg.get("category", "")
         if cat.endswith("Match Winner"):
             add("match_winner", leg["subject"], leg["market"], leg.get("detail"),
@@ -231,7 +318,8 @@ def log_todays_signals(legs, log):
                 leg["league_name"], leg["event_id"], leg["match_date"],
                 leg["home_name"], leg["away_name"])
 
-    print(f"  Results log: {added} new pick(s) logged, {len(log)} total in log")
+    print(f"  Results log: {added} new pick(s) logged, {len(log)} total in log "
+          f"({not_yet_close} leg(s) skipped -- not yet within {LOG_WINDOW_HOURS}h of kickoff)")
     return log
 
 
@@ -332,6 +420,36 @@ def _verify_game1_correct_score_entry(entry):
     pred_ws, pred_ls = (int(x) for x in predicted.split("-"))
     hit = (subject_pts == pred_ws) and (opp_pts == pred_ls)
     return {"actual": f"{subject_pts}-{opp_pts}", "result": "hit" if hit else "miss"}
+
+
+def prune_dead_pending(log, now=None):
+    """Removes pending entries whose kickoff was more than
+    PENDING_EXPIRY_HOURS ago and still never resolved -- see that
+    constant's own comment and this file's module docstring (CONFIRMED
+    2026-10-05). `now` is injectable (UTC epoch float) for tests.
+
+    Also repairs date_key on every surviving pending entry via
+    _date_key(): entries logged before the 2026-10-05 fix carry the
+    broken "raw epoch sliced to 10 chars" date_key (see module
+    docstring), which made verify_pending_results treat them as always
+    checkable. There's no reason to leave that bug live on existing
+    entries just because they predate the fix."""
+    now = now if now is not None else datetime.now(timezone.utc).timestamp()
+    cutoff = now - PENDING_EXPIRY_HOURS * 3600
+    kept = []
+    pruned = 0
+    for entry in log:
+        if entry["status"] == "pending":
+            kickoff = _kickoff_epoch(entry.get("match_date"))
+            if kickoff is not None and kickoff < cutoff:
+                pruned += 1
+                continue
+            entry["date_key"] = _date_key(entry.get("match_date"))
+        kept.append(entry)
+    if pruned:
+        print(f"  Pruned {pruned} dead pending entry(ies) (kickoff was "
+              f"{PENDING_EXPIRY_HOURS}h+ ago, never resolved)")
+    return kept
 
 
 def verify_pending_results(log, max_checks=60):
@@ -461,6 +579,7 @@ def run_results_tracker(legs):
     """Single entry point called from spin_line.py's main()."""
     print("\nRunning results tracker...")
     log = load_log()
+    log = prune_dead_pending(log)
     log = log_todays_signals(legs, log)
     log = verify_pending_results(log)
     save_log(log)
