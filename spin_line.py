@@ -979,6 +979,14 @@ const LEGS = {legs_json};
 // real bookmaker odds -- the user types in bet365's current price here so
 // they can eyeball the model's probability against the de-vigged market
 // probability, per match, without Spin Line trying to auto-adjust anything.
+// User's chosen straight-win hunting ground, confirmed 2026-10-05 after a
+// 97%-model/coin-flip-market case (Theodor vs Branny) came in as a near-even
+// 3-setter: stick to short-ish favorites bet365 itself already trusts,
+// rather than the model's own (occasionally overconfident) long-shot calls.
+const TARGET_ODDS_MIN = 1.4;
+const TARGET_ODDS_MAX = 1.6;
+const AGREE_THRESHOLD_PP = 15; // model vs market gap, in points, still counted as "agrees"
+
 function spinCompareOdds(id, pHomeModel, pAwayModel) {{
   const hEl = document.getElementById('b365h-' + id);
   const aEl = document.getElementById('b365a-' + id);
@@ -995,12 +1003,30 @@ function spinCompareOdds(id, pHomeModel, pAwayModel) {{
   const edgeHome = (pHomeModel - pHomeMkt) * 100;
   const edgeAway = (pAwayModel - pAwayMkt) * 100;
   const fmtEdge = e => (e >= 0 ? '+' : '') + e.toFixed(0) + 'pp';
+
+  function badgeFor(side, odds, pModel, edge) {{
+    if (odds < TARGET_ODDS_MIN || odds > TARGET_ODDS_MAX) return '';
+    if (pModel <= 0.5) {{
+      return '<div style="margin-top:4px;padding:4px 8px;border-radius:6px;background:#3a1420;color:#ff8a93;font-size:12px">'
+        + '&#10005; ' + side + ' @' + odds.toFixed(2) + ' in target range, but the model actually favors the other side</div>';
+    }}
+    if (Math.abs(edge) <= AGREE_THRESHOLD_PP) {{
+      return '<div style="margin-top:4px;padding:4px 8px;border-radius:6px;background:#0f3a24;color:#6ee7a8;font-size:12px">'
+        + '&#10003; ' + side + ' @' + odds.toFixed(2) + ' -- in target range (' + TARGET_ODDS_MIN + '-' + TARGET_ODDS_MAX + ') and model agrees (' + fmtEdge(edge) + ')</div>';
+    }}
+    return '<div style="margin-top:4px;padding:4px 8px;border-radius:6px;background:#3a2f0f;color:#f3c969;font-size:12px">'
+      + '&#9888; ' + side + ' @' + odds.toFixed(2) + ' in target range, but model disagrees on size (' + fmtEdge(edge) + ')</div>';
+  }}
+
+  const badges = badgeFor(aEl.placeholder.replace(' odds', ''), oa, pAwayModel, edgeAway)
+    + badgeFor(hEl.placeholder.replace(' odds', ''), oh, pHomeModel, edgeHome);
+
   out.innerHTML =
     '<div style="margin-top:6px;font-size:12px;color:var(--sub)">' +
     'bet365 implied (de-vigged, ' + (overround * 100 - 100).toFixed(1) + '% margin): ' +
     'away ' + (pAwayMkt * 100).toFixed(0) + '% · home ' + (pHomeMkt * 100).toFixed(0) + '%' +
     '<br>Model vs market edge: away ' + fmtEdge(edgeAway) + ' · home ' + fmtEdge(edgeHome) +
-    '</div>';
+    '</div>' + badges;
 }}
 
 function shuffleArr(arr) {{
