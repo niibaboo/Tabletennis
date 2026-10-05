@@ -590,7 +590,8 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
                        p_home_match, p_away_match,
                        home_proj, away_proj, kickoff="--:--",
                        p_home_cover=None, p_away_cover=None,
-                       home_scorelines=None, away_scorelines=None):
+                       home_scorelines=None, away_scorelines=None,
+                       card_id=0):
     home_hist = "/".join(home_proj["results"][-5:]) or "-"
     away_hist = "/".join(away_proj["results"][-5:]) or "-"
 
@@ -625,6 +626,19 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
       </div>
     </div>"""
 
+    odds_row = f"""<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--panel2)">
+      <div style="font-size:11px;color:var(--sub);margin-bottom:4px">Compare vs bet365 (optional, type in current odds)</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="b365a-{card_id}" type="number" step="0.01" min="1.01" placeholder="{away_name} odds"
+          oninput="spinCompareOdds({card_id}, {p_home_match}, {p_away_match})"
+          style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--panel2);background:var(--panel);color:var(--text);font-size:13px">
+        <input id="b365h-{card_id}" type="number" step="0.01" min="1.01" placeholder="{home_name} odds"
+          oninput="spinCompareOdds({card_id}, {p_home_match}, {p_away_match})"
+          style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--panel2);background:var(--panel);color:var(--text);font-size:13px">
+      </div>
+      <div id="oddsOut-{card_id}"></div>
+    </div>"""
+
     return f"""<div class="builderPanel">
       <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.03em">{league_name} · {kickoff}</div>
       <h3 style="margin:2px 0 4px 0;font-size:17px">{away_name} vs {home_name}</h3>
@@ -632,6 +646,7 @@ def render_match_card(league_name, home_name, away_name, p_home_game, p_away_gam
       {win_bar}
       {handicap_row}
       {score_row}
+      {odds_row}
     </div>"""
 
 
@@ -675,6 +690,7 @@ def build_legs_and_cards(target_date):
     legs = []
     cards = ""
     streak_entries = []
+    card_idx = 0
 
     for league, m in all_matches:
             home, away = m.get("home", {}), m.get("away", {})
@@ -834,7 +850,9 @@ def build_legs_and_cards(target_date):
                     kickoff=kickoff,
                     p_home_cover=p_home_cover, p_away_cover=p_away_cover,
                     home_scorelines=home_scorelines, away_scorelines=away_scorelines,
+                    card_id=card_idx,
                 )
+                card_idx += 1
 
             for name, proj, is_home in ((home_name, home_proj, True), (away_name, away_proj, False)):
                 streak_len = _current_win_streak(proj["results"])
@@ -956,6 +974,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
 const LEGS = {legs_json};
+
+// Manual bet365-odds comparison (Match Winner only). The model never sees
+// real bookmaker odds -- the user types in bet365's current price here so
+// they can eyeball the model's probability against the de-vigged market
+// probability, per match, without Spin Line trying to auto-adjust anything.
+function spinCompareOdds(id, pHomeModel, pAwayModel) {{
+  const hEl = document.getElementById('b365h-' + id);
+  const aEl = document.getElementById('b365a-' + id);
+  const out = document.getElementById('oddsOut-' + id);
+  const oh = parseFloat(hEl.value);
+  const oa = parseFloat(aEl.value);
+  if (!oh || !oa || oh <= 1 || oa <= 1) {{
+    out.innerHTML = '';
+    return;
+  }}
+  const rawH = 1 / oh, rawA = 1 / oa;
+  const overround = rawH + rawA;
+  const pHomeMkt = rawH / overround, pAwayMkt = rawA / overround;
+  const edgeHome = (pHomeModel - pHomeMkt) * 100;
+  const edgeAway = (pAwayModel - pAwayMkt) * 100;
+  const fmtEdge = e => (e >= 0 ? '+' : '') + e.toFixed(0) + 'pp';
+  out.innerHTML =
+    '<div style="margin-top:6px;font-size:12px;color:var(--sub)">' +
+    'bet365 implied (de-vigged, ' + (overround * 100 - 100).toFixed(1) + '% margin): ' +
+    'away ' + (pAwayMkt * 100).toFixed(0) + '% · home ' + (pHomeMkt * 100).toFixed(0) + '%' +
+    '<br>Model vs market edge: away ' + fmtEdge(edgeAway) + ' · home ' + fmtEdge(edgeHome) +
+    '</div>';
+}}
 
 function shuffleArr(arr) {{
   for (let i = arr.length - 1; i > 0; i--) {{
