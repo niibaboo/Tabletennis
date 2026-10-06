@@ -943,8 +943,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <div id="builderResult" class="builderResult">
       Untick any market you don't want considered, set a target odds and leg cap, then tap
-      Build. Caps at 2 legs per player/matchup to avoid stacking a player's own legs on top of
-      each other. Tap Shuffle for a fresh pick without changing your settings.
+      Build. Caps at 2 legs per player/matchup and 2 legs per tournament, so the slip isn't
+      stacked on one player or one studio league's reshuffling/bad night, and lists the built
+      legs in kickoff order. Tap Shuffle for a fresh pick without changing your settings.
     </div>
   </div>
 
@@ -1070,6 +1071,7 @@ function buildSafest() {{
 
   const chosen = [];
   const subjectCount = {{}};
+  const leagueCount = {{}};
   let combinedOdds = 1;
   let addedThisPass = true;
 
@@ -1083,14 +1085,27 @@ function buildSafest() {{
         cursor[cat]++;
         const count = subjectCount[leg.subject] || 0;
         if (count >= 2) continue;
+        // Max 2 legs per tournament, so one league's studio-match
+        // reshuffling or a single bad night can't dominate the whole
+        // slip -- user request, 2026-10-06, same spirit as the
+        // existing per-subject cap above.
+        const lgCount = leagueCount[leg.league_name] || 0;
+        if (lgCount >= 2) continue;
         chosen.push(leg);
         combinedOdds *= 100 / leg.prob;
         subjectCount[leg.subject] = count + 1;
+        leagueCount[leg.league_name] = lgCount + 1;
         addedThisPass = true;
         break;
       }}
     }}
   }}
+
+  // Present the built slip in kickoff order -- easier to work through
+  // top to bottom than whatever order categories happened to be
+  // round-robin'd in above (user request, 2026-10-06). match_date is
+  // the raw BetsAPI epoch string every leg already carries.
+  chosen.sort((a, b) => parseInt(a.match_date || 0) - parseInt(b.match_date || 0));
 
   const out = document.getElementById('builderResult');
   if (!chosen.length) {{ out.innerHTML = 'No legs available to build from.'; return; }}
