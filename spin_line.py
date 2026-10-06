@@ -942,10 +942,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button class="builderBtnAlt" onclick="buildSafest()">🔀 Shuffle</button>
     </div>
     <div id="builderResult" class="builderResult">
-      Untick any market you don't want considered, set a target odds and leg cap, then tap
-      Build. Caps at 2 legs per player/matchup and 2 legs per tournament, so the slip isn't
-      stacked on one player or one studio league's reshuffling/bad night, and lists the built
-      legs in kickoff order. Tap Shuffle for a fresh pick without changing your settings.
+      Builder draws only from Match Winner and 1st Game Winner (per tournament) -- untick any
+      you don't want considered, set a target odds and leg cap, then tap Build. Caps at 2 legs
+      per player/matchup and 2 legs per tournament, so the slip isn't stacked on one player or
+      one studio league's reshuffling/bad night, and lists the built legs in kickoff order.
+      Tap Shuffle for a fresh pick without changing your settings. Game Handicap, Correct Score
+      and 1st Game Correct Score are still on the per-match cards and tracked below, just not
+      offered here.
     </div>
   </div>
 
@@ -1050,7 +1053,16 @@ function tieredShuffle(legs, bandSize) {{
 }}
 function initToggles() {{
   const container = document.getElementById('builderCategoryToggles');
-  const cats = [...new Set(LEGS.map(l => l.category))];
+  // Trimmed to Match Winner / 1st Game Winner only -- user request,
+  // 2026-10-06, after the weekend accumulator loss (and the earlier
+  // Theodor/Branny overconfidence case): these two markets are the
+  // ones the user actually trusts for the builder. Game Handicap,
+  // Correct Score and 1st Game Correct Score are still generated,
+  // shown on the per-match cards, and tracked on the results
+  // dashboard -- this only narrows what the SAFEST BET BUILDER itself
+  // offers to combine into a slip.
+  const cats = [...new Set(LEGS.map(l => l.category))]
+    .filter(c => c.endsWith("Match Winner") || c.endsWith("1st Game Winner"));
   container.innerHTML = cats.map(c => `
     <label><input type="checkbox" class="catToggle" value="${{c}}" checked> ${{c}}</label>
   `).join('');
