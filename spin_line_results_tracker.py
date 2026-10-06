@@ -251,7 +251,7 @@ def log_todays_signals(legs, log, now=None):
     not_yet_close = 0
 
     def add(scanner, subject, market, detail, league, event_id, date,
-             home_name, away_name):
+             home_name, away_name, prob=None):
         nonlocal added
         eid = _entry_id(scanner, subject, event_id, market)
         if eid in existing_ids:
@@ -263,6 +263,13 @@ def log_todays_signals(legs, log, now=None):
             "match_date": date, "date_key": _date_key(date),
             "logged_at": datetime.now(timezone.utc).isoformat(),
             "status": "pending", "result": None, "actual": None,
+            # Predicted probability (0-100) at logging time, added
+            # 2026-10-06 for calibration checks (user request: bucket
+            # Match Winner picks by predicted prob and see whether the
+            # actual hit rate matches -- see calibration_buckets()).
+            # None for entries logged before this field existed, and
+            # calibration_buckets() skips those rather than guessing.
+            "prob": prob,
         })
         existing_ids.add(eid)
         added += 1
@@ -276,18 +283,18 @@ def log_todays_signals(legs, log, now=None):
         if cat.endswith("Match Winner"):
             add("match_winner", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
-                leg["home_name"], leg["away_name"])
+                leg["home_name"], leg["away_name"], prob=leg.get("prob"))
         elif cat.endswith("1st Game Winner"):
             add("game1_winner", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
-                leg["home_name"], leg["away_name"])
+                leg["home_name"], leg["away_name"], prob=leg.get("prob"))
         elif cat.endswith("Game Handicap"):
             # -1.5/+1.5 is the only line this market ever uses (see
             # spin_line.py's module docstring/race_scoreline_probs) --
             # no line to re-parse out of the market string.
             add("game_handicap", leg["subject"], leg["market"], leg.get("detail"),
                 leg["league_name"], leg["event_id"], leg["match_date"],
-                leg["home_name"], leg["away_name"])
+                leg["home_name"], leg["away_name"], prob=leg.get("prob"))
         elif cat.endswith("1st Game Correct Score"):
             # Checked BEFORE the plain "Correct Score" branch below --
             # "...1st Game Correct Score" also ends with "Correct Score",
@@ -303,7 +310,7 @@ def log_todays_signals(legs, log, now=None):
                 continue
             add("game1_correct_score", leg["subject"], leg["market"], f"score={ws}-{ls}",
                 leg["league_name"], leg["event_id"], leg["match_date"],
-                leg["home_name"], leg["away_name"])
+                leg["home_name"], leg["away_name"], prob=leg.get("prob"))
         elif cat.endswith("Correct Score"):
             # predicted scoreline is embedded in the market string
             # ("{name} to win {gf}-{ga}"), from the SUBJECT's own
@@ -316,7 +323,7 @@ def log_todays_signals(legs, log, now=None):
                 continue
             add("correct_score", leg["subject"], leg["market"], f"score={gf}-{ga}",
                 leg["league_name"], leg["event_id"], leg["match_date"],
-                leg["home_name"], leg["away_name"])
+                leg["home_name"], leg["away_name"], prob=leg.get("prob"))
 
     print(f"  Results log: {added} new pick(s) logged, {len(log)} total in log "
           f"({not_yet_close} leg(s) skipped -- not yet within {LOG_WINDOW_HOURS}h of kickoff)")
@@ -502,16 +509,46 @@ def build_results_dashboard(log):
         d = by_scanner.setdefault(e["scanner"], {"hit": 0, "miss": 0})
         d[e["result"]] += 1
 
-    # By-tournament breakdown (added 2026-10-05, user request): Setka Cup /
-    # TT Cup / Czech Liga Pro are race-to-3 (best of 5 games), TT Elite
-    # Series is race-to-2 (best of 3) -- different match lengths behave
-    # differently under the same per-game-rate model, so the user wants to
-    # see which specific tournament the model's signals are actually
-    # landing on, not just which market type.
+    # By-tournament breakdown (added 2026-10-05, user request): lets the
+    # user see which specific tournament the model's signals are actually
+    # landing on, not just which market type. CONFIRMED 2026-10-06 by the
+    # user: all four tournaments (Setka Cup, TT Cup, Czech Liga Pro, TT
+    # Elite Series) are race-to-3 (best of 5 games) -- MATCH_GAMES_TO_WIN=3
+    # in spin_line.py applies correctly to all of them, so a lagging
+    # tournament here isn't a match-format mismatch, it's a real
+    # per-tournament signal-quality difference worth watching.
     by_league = {}
     for e in verified:
         d = by_league.setdefault(e.get("league") or "Unknown", {"hit": 0, "miss": 0})
         d[e["result"]] += 1
+
+    # Calibration check (added 2026-10-06, user request): bucket verified
+    # Match Winner picks by their PREDICTED probability (stored on the
+    # entry as "prob" -- see log_todays_signals/add() above) and compare
+    # against the ACTUAL hit rate in that bucket. If the model is
+    # well-calibrated, an 80-90% bucket should win roughly 80-90% of the
+    # time; if it's overconfident (as the Theodor/Branny 97%-vs-coin-flip
+    # case suggested it might be), a high bucket will win noticeably less
+    # than its own stated probability. Deliberately NOT auto-correcting
+    # anything here -- this only measures; any shrink/adjustment is a
+    # separate decision once there's enough verified data per bucket to
+    # trust the curve, per the user's own "don't guess a correction
+    # factor, measure it first" call. Entries logged before "prob" existed
+    # have prob=None and are skipped rather than silently miscounted.
+    CALIBRATION_BUCKETS = [(50, 60), (60, 70), (70, 80), (80, 90), (90, 101)]
+    calibration = {b: {"hit": 0, "miss": 0} for b in CALIBRATION_BUCKETS}
+    calibration_skipped = 0
+    for e in verified:
+        if e["scanner"] != "match_winner":
+            continue
+        p = e.get("prob")
+        if p is None:
+            calibration_skipped += 1
+            continue
+        for lo, hi in CALIBRATION_BUCKETS:
+            if lo <= p < hi:
+                calibration[(lo, hi)][e["result"]] += 1
+                break
 
     SCANNER_LABELS = {
         "match_winner": "Match Winner",
@@ -551,6 +588,29 @@ def build_results_dashboard(log):
     if not league_rows:
         league_rows = '<p style="color:var(--sub);font-size:12px">No verified picks yet.</p>'
 
+    calibration_rows = ""
+    for (lo, hi), d in calibration.items():
+        n = d["hit"] + d["miss"]
+        label = f"{lo}-100%" if hi >= 101 else f"{lo}-{hi}%"
+        if n == 0:
+            calibration_rows += f"""<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+  <span>Predicted {label}</span>
+  <span style="color:var(--sub)">—</span>
+  <span style="color:var(--sub);font-size:12px">0/0</span>
+</div>"""
+            continue
+        actual_pct = round(100 * d["hit"] / n)
+        # Flag a bucket as overconfident once it has a meaningful sample
+        # (n>=10) and actually wins noticeably less than it claims to.
+        flag = ""
+        if n >= 10 and actual_pct < lo - 10:
+            flag = ' <span style="color:#f3c969;font-size:11px">(overconfident)</span>'
+        calibration_rows += f"""<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+  <span>Predicted {label}{flag}</span>
+  <span style="color:var(--green);font-weight:bold">{actual_pct}% actual</span>
+  <span style="color:var(--sub);font-size:12px">{d['hit']}/{n}</span>
+</div>"""
+
     recent = sorted(verified, key=lambda e: e.get("verified_at", ""), reverse=True)[:30]
     recent_rows = ""
     for e in recent:
@@ -583,6 +643,13 @@ def build_results_dashboard(log):
   <div style="font-weight:bold;margin-bottom:8px">By Tournament</div>
   <div style="color:var(--sub);font-size:11px;margin-bottom:8px">All markets combined, per tournament</div>
   {league_rows}
+</div>
+
+<div style="background:var(--panel);border-radius:12px;padding:16px;margin:14px 0;border:1px solid var(--border)">
+  <div style="font-weight:bold;margin-bottom:8px">Match Winner Calibration</div>
+  <div style="color:var(--sub);font-size:11px;margin-bottom:8px">Predicted probability bucket vs actual hit rate -- a well-calibrated 80-90% bucket should win ~80-90% of the time. Only counts picks logged since 2026-10-06 (older ones didn't store a predicted probability).</div>
+  {calibration_rows}
+  {f'<div style="color:var(--sub);font-size:11px;margin-top:8px">{calibration_skipped} older verified pick(s) skipped -- no stored probability.</div>' if calibration_skipped else ''}
 </div>
 
 <div style="background:var(--panel);border-radius:12px;padding:16px;margin:14px 0;border:1px solid var(--border)">
