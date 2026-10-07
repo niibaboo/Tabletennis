@@ -330,21 +330,36 @@ def log_todays_signals(legs, log, now=None):
     return log
 
 
-def _get_finished_event(event_id):
+def _get_finished_event(event_id, cache=None):
+    """CONFIRMED (2026-10-07, from a live log showing 19,290 pending vs
+    1,362 verified, calibration stuck at 0/0 despite 1,350 Match Winner
+    picks having a stored prob): a Spin Line match logs ~17 entries on
+    average (Match Winner + Game Handicap + Correct Score x several
+    lines + 1st Game Winner + 1st Game Correct Score x several lines),
+    all sharing one event_id -- but every verifier call fetched
+    /event/view independently, so most of each run's budget was burned
+    re-fetching the SAME event over and over for its own sibling
+    entries. `cache`, when given, is a per-run dict (event_id -> event
+    or None) shared across every verifier call in that
+    verify_pending_results() pass, so one real API call now covers all
+    ~17 entries for that match instead of up to 17 redundant ones."""
+    if cache is not None and event_id in cache:
+        return cache[event_id]
     data = _get("/event/view", {"event_id": event_id})
-    if not data:
-        return None
-    results = data.get("results", []) if isinstance(data, dict) else []
-    if not results:
-        return None
-    event = results[0] if isinstance(results, list) else results
-    if str(event.get("time_status")) != "3":  # 3 = ended, general BetsAPI convention
-        return None
+    event = None
+    if data:
+        results = data.get("results", []) if isinstance(data, dict) else []
+        if results:
+            candidate = results[0] if isinstance(results, list) else results
+            if str(candidate.get("time_status")) == "3":  # 3 = ended, general BetsAPI convention
+                event = candidate
+    if cache is not None:
+        cache[event_id] = event
     return event
 
 
-def _verify_match_winner_entry(entry):
-    event = _get_finished_event(entry["event_id"])
+def _verify_match_winner_entry(entry, cache=None):
+    event = _get_finished_event(entry["event_id"], cache)
     if not event:
         return None
     games = parse_ss_home_away(event.get("ss"))
@@ -357,8 +372,8 @@ def _verify_match_winner_entry(entry):
     return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if subject_games > opp_games else "miss"}
 
 
-def _verify_game1_winner_entry(entry):
-    event = _get_finished_event(entry["event_id"])
+def _verify_game1_winner_entry(entry, cache=None):
+    event = _get_finished_event(entry["event_id"], cache)
     if not event:
         return None
     winner_side = parse_game1_winner(event)
@@ -369,12 +384,12 @@ def _verify_game1_winner_entry(entry):
     return {"actual": winner_side, "result": "hit" if winner_side == subject_side else "miss"}
 
 
-def _verify_game_handicap_entry(entry):
+def _verify_game_handicap_entry(entry, cache=None):
     """-1.5 games handicap: the subject covers if they win by 2+ games
     (3-0 or 3-1), regardless of whether they won the match outright --
     reuses the same "ss" field and home/away logic as Match Winner, no
     new API call shape to trust."""
-    event = _get_finished_event(entry["event_id"])
+    event = _get_finished_event(entry["event_id"], cache)
     if not event:
         return None
     games = parse_ss_home_away(event.get("ss"))
@@ -388,11 +403,11 @@ def _verify_game_handicap_entry(entry):
     return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if covered else "miss"}
 
 
-def _verify_correct_score_entry(entry):
+def _verify_correct_score_entry(entry, cache=None):
     """Exact scoreline, from the subject's own perspective -- reuses the
     same "ss" field as Match Winner/Game Handicap, just compared against
     the predicted (gf, ga) instead of a win/cover threshold."""
-    event = _get_finished_event(entry["event_id"])
+    event = _get_finished_event(entry["event_id"], cache)
     if not event:
         return None
     games = parse_ss_home_away(event.get("ss"))
@@ -408,12 +423,12 @@ def _verify_correct_score_entry(entry):
     return {"actual": f"{subject_games}-{opp_games}", "result": "hit" if hit else "miss"}
 
 
-def _verify_game1_correct_score_entry(entry):
+def _verify_game1_correct_score_entry(entry, cache=None):
     """Exact game-1 scoreline, from the subject's own perspective (the
     predicted "ws-ls" is always subject's-points-first, since that's how
     spin_line.py's leg market string is built) -- verified against the
     real per-game "scores" dict, same source as parse_game1_winner."""
-    event = _get_finished_event(entry["event_id"])
+    event = _get_finished_event(entry["event_id"], cache)
     if not event:
         return None
     game1 = parse_game1_score(event)
@@ -459,10 +474,23 @@ def prune_dead_pending(log, now=None):
     return kept
 
 
-def verify_pending_results(log, max_checks=60):
+def verify_pending_results(log, max_checks=600):
+    """RAISED 60 -> 600 (2026-10-07, user-confirmed, see _get_finished_event's
+    docstring): with event-result caching now in place, ~17 entries share
+    one real API call on average, so 600 checks/run costs roughly
+    600/17 =~ 35 real calls -- actually FEWER than the old uncached 60/run
+    budget ever made, while clearing the backlog ~10x faster. Verification
+    processes entries in LOG ORDER (oldest-logged-first, a strict FIFO),
+    so a too-small budget here means recently-logged entries never get
+    reached before PENDING_EXPIRY_HOURS prunes them -- exactly what was
+    happening: 1,350 Match Winner picks with a stored "prob" sat queued
+    behind ~16,000 older entries and never got checked, leaving the
+    Match Winner Calibration panel stuck at 0/0 despite the feature
+    having been live for a day."""
     today = datetime.now(timezone.utc).date().isoformat()
     checked = 0
     updated = 0
+    event_cache = {}  # event_id -> event or None, shared for this whole run
 
     for entry in log:
         if entry["status"] != "pending":
@@ -476,15 +504,15 @@ def verify_pending_results(log, max_checks=60):
         result = None
         try:
             if entry["scanner"] == "match_winner":
-                result = _verify_match_winner_entry(entry)
+                result = _verify_match_winner_entry(entry, event_cache)
             elif entry["scanner"] == "game1_winner":
-                result = _verify_game1_winner_entry(entry)
+                result = _verify_game1_winner_entry(entry, event_cache)
             elif entry["scanner"] == "game_handicap":
-                result = _verify_game_handicap_entry(entry)
+                result = _verify_game_handicap_entry(entry, event_cache)
             elif entry["scanner"] == "correct_score":
-                result = _verify_correct_score_entry(entry)
+                result = _verify_correct_score_entry(entry, event_cache)
             elif entry["scanner"] == "game1_correct_score":
-                result = _verify_game1_correct_score_entry(entry)
+                result = _verify_game1_correct_score_entry(entry, event_cache)
         except Exception as e:
             print(f"    [!] verification error for entry {entry['id']} ({entry['scanner']}): {e}")
             result = None
@@ -496,7 +524,8 @@ def verify_pending_results(log, max_checks=60):
             entry["verified_at"] = datetime.now(timezone.utc).isoformat()
             updated += 1
 
-    print(f"  Results verification: checked {checked} pending entries, {updated} newly verified")
+    print(f"  Results verification: checked {checked} pending entries "
+          f"({len(event_cache)} distinct events looked up), {updated} newly verified")
     return log
 
 
